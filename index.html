@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4f4b">
+<meta name="color-scheme" content="light dark">
+<title>Portal</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/css/portal.css">
+<script src="/config.js"></script>
+</head>
+<body>
+
+<!-- Aviso se o Portal não estiver na raiz do endereço -->
+<div id="aviso-raiz" class="faixa-erro" hidden>
+  O Portal tem de estar na raiz do endereço (por exemplo <b>https://utilizador.github.io/</b>), senão as apps não abrem os ficheiros. Vê o LEIA-ME.
+</div>
+
+<!-- ============ Arranque ============ -->
+<section id="ecra-arranque" class="ecra centro">
+  <img src="/icons/favicon.svg" alt="" class="logo-grande">
+</section>
+
+<!-- ============ Primeira configuração ============ -->
+<section id="ecra-config" class="ecra centro" hidden>
+  <div class="painel">
+    <img src="/icons/favicon.svg" alt="" class="logo">
+    <!-- passo 1: segredo -->
+    <div data-passo="1">
+      <h1>Bem-vindo ao Portal</h1>
+      <p class="suave">Primeiro, escolhe como vais desbloquear o Portal neste aparelho.</p>
+      <div class="alternar" role="radiogroup">
+        <button type="button" data-tipo="pin" class="ativo">PIN</button>
+        <button type="button" data-tipo="senha">Palavra-passe</button>
+      </div>
+      <form id="form-segredo" autocomplete="off">
+        <label><span id="rot-seg1">PIN (4 a 8 algarismos)</span>
+          <input id="seg1" type="password" inputmode="numeric" autocomplete="new-password" required></label>
+        <label><span>Repete</span>
+          <input id="seg2" type="password" inputmode="numeric" autocomplete="new-password" required></label>
+        <p class="erro" id="erro-seg"></p>
+        <button class="btn primario largo" type="submit">Continuar</button>
+      </form>
+    </div>
+    <!-- passo 2: Google -->
+    <div data-passo="2" hidden>
+      <h1>Ligar ao Google Drive</h1>
+      <p class="suave">O Portal guarda os programas e os dados das tuas apps numa pasta <b>Portal</b> no teu Drive. Só vê os ficheiros que ele próprio cria.</p>
+      <p class="erro" id="erro-google"></p>
+      <button class="btn primario largo" id="btn-config-google" type="button">Entrar com Google</button>
+      <button class="btn texto largo" id="btn-config-depois" type="button">Fazer isto mais tarde</button>
+    </div>
+    <!-- passo 3: pronto -->
+    <div data-passo="3" hidden>
+      <h1>Pronto</h1>
+      <p class="suave" id="txt-pronto">O Portal está configurado neste aparelho.</p>
+      <button class="btn primario largo" id="btn-config-fim" type="button">Começar</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Início ============ -->
+<section id="ecra-inicio" class="ecra" hidden>
+  <header class="topo">
+    <div class="marca"><img src="/icons/favicon.svg" alt=""><span>Portal</span></div>
+    <button id="estado" class="estado" type="button"></button>
+    <button id="btn-instalar" class="btn pequeno" type="button" hidden>Instalar</button>
+    <button id="btn-def" class="icone-btn" type="button" title="Definições" aria-label="Definições">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Zm7.4-2.5a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.8 1.7 1l.4 2.5h4l.4-2.5c.6-.2 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6Z"/></svg>
+    </button>
+  </header>
+  <main class="conteudo">
+    <div id="grelha" class="grelha"></div>
+    <div id="vazio" class="vazio" hidden>
+      <p><b>Ainda não há apps neste aparelho.</b></p>
+      <p class="suave">Junta a primeira: escolhe a pasta da app (com o <code>index.html</code>) ou um ficheiro .zip.</p>
+    </div>
+    <button id="btn-juntar" class="btn primario" type="button">+ Juntar app</button>
+  </main>
+</section>
+
+<!-- ============ App aberta ============ -->
+<section id="ecra-app" class="ecra" hidden>
+  <div class="barra-app">
+    <button id="btn-voltar" class="btn texto" type="button">← Início</button>
+    <span id="nome-app" class="nome-app"></span>
+    <button id="estado-app" class="estado mini" type="button"></button>
+  </div>
+  <iframe id="moldura" title="App"
+    allow="microphone; camera; fullscreen; autoplay; clipboard-read; clipboard-write; display-capture; screen-wake-lock"
+    allowfullscreen></iframe>
+</section>
+
+<!-- ============ Bloqueio (fica por cima de tudo) ============ -->
+<section id="ecra-bloqueio" class="ecra centro sobreposto" hidden>
+  <div class="painel estreito">
+    <img src="/icons/favicon.svg" alt="" class="logo">
+    <h1>Portal</h1>
+    <div id="bloq-pin">
+      <div class="pontos" id="pontos"></div>
+      <div class="teclado" id="teclado">
+        <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+        <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+        <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+        <button type="button" data-k="apagar" aria-label="Apagar">⌫</button><button type="button">0</button><button type="button" data-k="ok" class="ok" aria-label="Entrar">✓</button>
+      </div>
+    </div>
+    <form id="bloq-senha" hidden>
+      <input id="senha" type="password" autocomplete="current-password" placeholder="Palavra-passe">
+      <button class="btn primario largo" type="submit">Entrar</button>
+    </form>
+    <p class="erro" id="erro-bloq" aria-live="polite"></p>
+    <button class="btn texto" id="btn-esqueci" type="button">Esqueci-me</button>
+  </div>
+</section>
+
+<!-- ============ Juntar / atualizar app ============ -->
+<dialog id="dlg-juntar" class="dialogo">
+  <form method="dialog" class="dlg-corpo" id="form-juntar">
+    <h2 id="juntar-titulo">Juntar app</h2>
+    <div id="juntar-escolha">
+      <p class="suave">Escolhe a <b>pasta</b> da app (a que tem o <code>index.html</code> e, se houver, outras pastas como <code>ler/</code>) ou um ficheiro <b>.zip</b>. Se a app for só um ficheiro, escolhe o <code>index.html</code>.</p>
+      <div class="linha-btns">
+        <label class="btn"><input type="file" id="in-pasta" webkitdirectory multiple hidden>Escolher pasta</label>
+        <label class="btn"><input type="file" id="in-fich" multiple accept=".zip,.html,.htm,application/zip,text/html" hidden>.zip ou index.html</label>
+      </div>
+    </div>
+    <p id="juntar-resumo" class="resumo" hidden></p>
+    <div id="juntar-campos" hidden>
+      <label><span>Nome</span><input id="j-nome" maxlength="60" required></label>
+      <label><span>Descrição <small class="suave">(opcional)</small></span><input id="j-desc" maxlength="140"></label>
+      <div class="linha-icone">
+        <div id="j-icone-prev" class="icone-app"></div>
+        <label class="btn pequeno"><input type="file" id="in-icone" accept="image/*" hidden>Escolher ícone</label>
+      </div>
+    </div>
+    <div id="juntar-prog" class="progresso" hidden><div></div><span></span></div>
+    <p class="erro" id="erro-juntar"></p>
+    <div class="linha-btns fim">
+      <button class="btn texto" value="cancelar" id="btn-juntar-cancelar">Cancelar</button>
+      <button class="btn primario" id="btn-juntar-ok" type="button" disabled>Juntar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Menu de uma app ============ -->
+<dialog id="dlg-app" class="dialogo">
+  <form method="dialog" class="dlg-corpo">
+    <div class="cab-app"><div class="icone-app" id="m-icone"></div><div><h2 id="m-nome"></h2><p class="suave" id="m-info"></p></div></div>
+    <p class="suave" id="m-desc"></p>
+    <div class="lista-acoes">
+      <button class="btn largo" type="button" id="m-abrir">Abrir</button>
+      <button class="btn largo" type="button" id="m-atualizar">Atualizar (novo index.html / pasta)</button>
+      <a class="btn largo" id="m-drive" target="_blank" rel="noopener" hidden>Ver no Google Drive</a>
+      <button class="btn largo perigo" type="button" id="m-apagar">Apagar deste aparelho</button>
+    </div>
+    <div class="linha-btns fim"><button class="btn texto" value="fechar">Fechar</button></div>
+  </form>
+</dialog>
+
+<!-- ============ Definições ============ -->
+<dialog id="dlg-def" class="dialogo largo">
+  <form method="dialog" class="dlg-corpo">
+    <h2>Definições</h2>
+
+    <h3>Google Drive</h3>
+    <p id="d-google" class="suave"></p>
+    <div class="linha-btns">
+      <button class="btn" type="button" id="d-ligar">Ligar ao Drive</button>
+      <a class="btn" id="d-pasta" target="_blank" rel="noopener" hidden>Abrir a pasta Portal</a>
+      <button class="btn texto" type="button" id="d-desligar" hidden>Desligar</button>
+    </div>
+
+    <h3>Segurança</h3>
+    <div class="linha-btns">
+      <button class="btn" type="button" id="d-mudar">Mudar PIN / palavra-passe</button>
+      <button class="btn" type="button" id="d-bloquear">Bloquear agora</button>
+    </div>
+    <div id="d-mudar-form" class="sub" hidden>
+      <div class="alternar" role="radiogroup">
+        <button type="button" data-tipo="pin" class="ativo">PIN</button>
+        <button type="button" data-tipo="senha">Palavra-passe</button>
+      </div>
+      <label><span>Atual</span><input id="m-atual" type="password" autocomplete="current-password"></label>
+      <label><span id="rot-m1">Novo PIN (4 a 8 algarismos)</span><input id="m-novo1" type="password" autocomplete="new-password"></label>
+      <label><span>Repete</span><input id="m-novo2" type="password" autocomplete="new-password"></label>
+      <p class="erro" id="erro-mudar"></p>
+      <button class="btn primario" type="button" id="d-mudar-ok">Guardar</button>
+    </div>
+    <label class="linha"><span>Bloquear depois de estar escondido</span>
+      <select id="d-bloq-min">
+        <option value="0">logo</option><option value="1">1 minuto</option><option value="5">5 minutos</option>
+        <option value="15">15 minutos</option><option value="60">1 hora</option>
+      </select>
+    </label>
+
+    <h3>Este aparelho</h3>
+    <p id="d-espaco" class="suave"></p>
+    <ul id="d-apps" class="lista-simples"></ul>
+
+    <h3>Sobre</h3>
+    <p class="suave" id="d-versao"></p>
+    <div class="linha-btns">
+      <button class="btn" type="button" id="d-atualizar-portal">Procurar atualização do Portal</button>
+      <button class="btn texto perigo" type="button" id="d-repor">Repor este aparelho…</button>
+    </div>
+
+    <div class="linha-btns fim"><button class="btn primario" value="fechar">Fechar</button></div>
+  </form>
+</dialog>
+
+<!-- ============ Confirmação genérica ============ -->
+<dialog id="dlg-conf" class="dialogo">
+  <form method="dialog" class="dlg-corpo">
+    <h2 id="c-titulo"></h2>
+    <p id="c-texto"></p>
+    <div class="linha-btns fim">
+      <button class="btn texto" value="nao" id="c-nao">Cancelar</button>
+      <button class="btn primario" value="sim" id="c-sim">Sim</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="avisos" class="avisos" aria-live="polite"></div>
+
+<script src="/vendor/jszip.min.js"></script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
