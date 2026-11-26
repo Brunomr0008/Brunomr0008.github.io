@@ -4,7 +4,7 @@ import * as Cofre from './cofre.js';
 import * as Drive from './drive.js';
 import * as Apps from './apps.js';
 
-const VERSAO_PORTAL = 'Fase 1 · 24/11/2026';
+const VERSAO_PORTAL = 'Fase 1.1 · 26/11/2026';
 const CFG = window.PORTAL_CONFIG || {};
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -440,7 +440,7 @@ $('#in-icone').onchange = async ev => {
 };
 $('#j-nome').oninput = () => { if (!J.icone) iconeEl({ id: J.app?.id || Apps.slug($('#j-nome').value), nome: $('#j-nome').value || '?' }, $('#j-icone-prev')); };
 $('#dlg-juntar').addEventListener('cancel', ev => { if (J?.aTrabalhar) ev.preventDefault(); });
-$('#btn-juntar-cancelar').onclick = ev => { if (J?.aTrabalhar) ev.preventDefault(); };
+$('#btn-juntar-cancelar').onclick = () => { if (!J?.aTrabalhar) $('#dlg-juntar').close(); };
 
 $('#btn-juntar-ok').onclick = async () => {
   if (!J?.prep || J.aTrabalhar) return;
