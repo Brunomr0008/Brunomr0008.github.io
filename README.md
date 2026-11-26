@@ -1,4 +1,6 @@
-# Portal — LEIA-ME (fase 1)
+# Portal — LEIA-ME (fase 1.1)
+
+> Guia completo e ilustrado: os PDFs "Portal - Guias". Este ficheiro é o resumo técnico.
 
 O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tudo no teu Google Drive e funciona sem internet.
 
@@ -95,6 +97,11 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | Apps novas ou atualizadas noutros aparelhos (fase 4) | O Portal **pergunta sempre** antes de transferir. |
 | Cifra (fase 6) | **Todos os dados** das apps ficam cifrados no Drive (registos e ficheiros, PDFs incluídos). Os programas ficam sem cifra. |
 | Recuperação (fase 6) | Telemóvel-chave; código de recuperação impresso; email de recuperação escondido como último recurso. Esquecer o PIN nunca apaga dados. |
+| Juntar e atualizar | Um só botão. O Portal reconhece se a app já existe e propõe atualizar; verifica se é mesmo a mesma app e avisa se não parecer (tu confirmas). Nunca cria duplicados sozinho. |
+| Versões | Ficam todas guardadas. Em cada app escolhes no Portal qual a versão ativa (normalmente a mais recente). |
+| Remover uma app | Possível, com aviso e aprovação no telemóvel principal (fase 5). |
+| Modos dos aparelhos | No browser (sem instalar): só com internet, nada fica guardado. Instalado no PC: guarda numa pasta que escolhes, com avisos se ela mudar de sítio. Instalado no Android: guarda no telemóvel. Todas as transferências se veem e podem ser canceladas ou retomadas. |
+| Formato das apps | Ficheiro "Regras para apps do Portal": juntar a cada chat de app. |
 | Para mais tarde | Impressão digital, cifra dos dados guardados no aparelho, BitLocker. |
 
 ## G. Coisas a saber
@@ -108,7 +115,7 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | Ficheiro | Para quê |
 |---|---|
 | `index.html`, `css/`, `icons/` | ecrãs do Portal |
-| `config.js` | o ID do cliente Google (o único ficheiro que mudas) |
+| `config.js` | o ID do cliente Google (o único ficheiro que mudas; nunca o substituas numa atualização) |
 | `sw.js` | funcionar sem internet; serve as apps em `/a/<id>/…` |
 | `js/main.js` | ecrãs e lógica |
 | `js/cofre.js` | PIN / palavra-passe |
