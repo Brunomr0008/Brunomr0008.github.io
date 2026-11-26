@@ -2,6 +2,7 @@
 // Guarda-se só um "resumo" (PBKDF2-SHA256), nunca o PIN.
 import { conf } from './armazem.js';
 
+export const V = '1.2';
 const ITERACOES = 310000;
 const TENTATIVAS_LIVRES = 5;
 
@@ -27,11 +28,12 @@ export function validar(segredo, tipo) {
 
 export async function existe() { return !!(await conf.get('cofre')); }
 export async function tipo() { return (await conf.get('cofre'))?.tipo || 'pin'; }
+export async function comprimento() { return (await conf.get('cofre'))?.comprimento || 0; }
 
 export async function definir(segredo, tipo) {
   const sal = crypto.getRandomValues(new Uint8Array(16));
   const resumo = await derivar(segredo, sal, ITERACOES);
-  await conf.set('cofre', { tipo, sal, resumo, iter: ITERACOES, em: Date.now() });
+  await conf.set('cofre', { tipo, sal, resumo, iter: ITERACOES, em: Date.now(), comprimento: segredo.length });
   await conf.set('falhas', { n: 0, ate: 0 });
 }
 
@@ -45,6 +47,8 @@ export async function verificar(segredo) {
   const r = await derivar(segredo, c.sal, c.iter);
   if (iguais(r, c.resumo)) {
     await conf.set('falhas', { n: 0, ate: 0 });
+    // guarda o tamanho do PIN (para mostrar o número certo de círculos)
+    if (c.comprimento !== segredo.length) { c.comprimento = segredo.length; await conf.set('cofre', c); }
     return { ok: true };
   }
   f.n++;

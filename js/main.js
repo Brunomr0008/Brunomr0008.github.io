@@ -4,7 +4,8 @@ import * as Cofre from './cofre.js';
 import * as Drive from './drive.js';
 import * as Apps from './apps.js';
 
-const VERSAO_PORTAL = 'Fase 1.1 · 26/11/2026';
+const VERSAO = '1.2';
+const VERSAO_PORTAL = 'Portal 1.2 · 26/11/2026';
 const CFG = window.PORTAL_CONFIG || {};
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -23,6 +24,7 @@ function tam(b) {
   return b.toLocaleString('pt-PT', { maximumFractionDigits: b < 10 ? 1 : 0 }) + ' ' + u[i];
 }
 function aviso(msg, { erro = false, acao = null, ms = erro ? 6500 : 3500 } = {}) {
+  if (erro) registarErro(msg);
   const d = document.createElement('div');
   d.className = 'aviso' + (erro ? ' erro' : '');
   const s = document.createElement('span'); s.textContent = msg; d.appendChild(s);
@@ -52,6 +54,46 @@ function corDe(s) {
   return cores[h % cores.length];
 }
 
+/* ================= registo de erros (Definições → Sobre) ================= */
+async function registarErro(msg) {
+  try {
+    const l = (await A.conf.get('erros')) || [];
+    l.push({ em: new Date().toLocaleString('pt-PT'), msg: String(msg).slice(0, 500) });
+    while (l.length > 30) l.shift();
+    await A.conf.set('erros', l);
+  } catch (e) {}
+}
+addEventListener('error', e => registarErro((e.message || 'Erro') + (e.filename ? ` (${e.filename.split('/').pop()}:${e.lineno})` : '')));
+addEventListener('unhandledrejection', e => registarErro('Erro: ' + (e.reason?.message || e.reason)));
+
+/* ================= versões dos ficheiros (deteta atualizações incompletas) ================= */
+function versaoSW() {
+  return new Promise(res => {
+    const c = navigator.serviceWorker?.controller; if (!c) return res('?');
+    const ch = new MessageChannel(); ch.port1.onmessage = e => res(e.data?.versao || '?');
+    c.postMessage('versao', [ch.port2]); setTimeout(() => res('?'), 1500);
+  });
+}
+async function versoesFicheiros() {
+  return {
+    'index.html': document.querySelector('meta[name=portal-versao]')?.content || '?',
+    'css/portal.css': getComputedStyle(document.documentElement).getPropertyValue('--portal-versao').replace(/["'\s]/g, '') || '?',
+    'js/main.js': VERSAO,
+    'js/cofre.js': Cofre.V || '?',
+    'sw.js': await versaoSW(),
+  };
+}
+
+/* ================= tema ================= */
+const COR_TEMA = { original: '#1f4f4b', claro: '#ffffff', escuro: '#0b0d10' };
+function aplicarTema(t) {
+  if (!COR_TEMA[t]) t = 'original';
+  document.documentElement.dataset.tema = t;
+  try { localStorage.setItem('portal:tema', t); } catch (e) {}
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', COR_TEMA[t]);
+}
+aplicarTema(document.documentElement.dataset.tema);
+
 /* ================= arranque ================= */
 async function arrancar() {
   if (!['/', '/index.html'].includes(location.pathname)) $('#aviso-raiz').hidden = false;
@@ -76,8 +118,10 @@ function registarSW() {
   navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(e => aviso('Erro ao preparar o modo sem internet: ' + e.message, { erro: true }));
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!tinha) return;
-    if (!E.appAberta) location.reload();
-    else aviso('Há uma versão nova do Portal.', { acao: { texto: 'Recarregar', fn: () => location.reload() } });
+    // Só recarrega sozinho se ainda estiveres no ecrã do PIN sem nada escrito; senão, pergunta
+    const noPin = !$('#ecra-bloqueio').hidden && !pinAtual && !$('#senha').value;
+    if (noPin) location.reload();
+    else aviso('Há uma versão nova do Portal pronta.', { acao: { texto: 'Recarregar', fn: () => location.reload() }, ms: 20000 });
   });
 }
 
@@ -124,9 +168,12 @@ function configInicial() {
 
 /* ================= bloqueio ================= */
 let pinAtual = '';
+let compPin = 0;
 async function mostrarBloqueio() {
   E.desbloqueado = false;
   const tipo = await Cofre.tipo();
+  compPin = tipo === 'pin' ? await Cofre.comprimento() : 0;
+  $('#versao-bloq').textContent = VERSAO_PORTAL;
   $('#bloq-pin').hidden = tipo !== 'pin';
   $('#bloq-senha').hidden = tipo === 'pin';
   $('#erro-bloq').textContent = '';
@@ -137,13 +184,25 @@ async function mostrarBloqueio() {
   if (tipo !== 'pin') { $('#senha').value = ''; setTimeout(() => $('#senha').focus(), 50); }
 }
 function desenharPontos() {
+  // Com o tamanho do PIN conhecido: mostra esse número de círculos. Senão: só os algarismos já escritos.
   const p = $('#pontos'); p.textContent = '';
-  p.classList.toggle('vazio', !pinAtual.length);
-  const n = Math.max(4, pinAtual.length);
-  for (let i = 0; i < n; i++) { const d = document.createElement('i'); if (i >= pinAtual.length) d.style.opacity = '.18'; p.appendChild(d); }
+  const n = compPin || pinAtual.length;
+  for (let i = 0; i < n; i++) { const d = document.createElement('i'); if (i >= pinAtual.length) d.className = 'v'; p.appendChild(d); }
 }
+function juntarAlgarismo(a) {
+  if (pinAtual.length >= 8) return;
+  pinAtual += a;
+  $('#erro-bloq').textContent = '';
+  desenharPontos();
+  if (compPin && pinAtual.length === compPin) setTimeout(() => tentar(pinAtual), 120);
+}
+let aVerificar = false;
 async function tentar(segredo) {
-  if (!segredo) return;
+  if (!segredo || aVerificar) return;
+  aVerificar = true;
+  try { await tentarAgora(segredo); } finally { aVerificar = false; }
+}
+async function tentarAgora(segredo) {
   $('#erro-bloq').textContent = 'A verificar…';
   const r = await Cofre.verificar(segredo);
   if (r.ok) return desbloquear();
@@ -154,15 +213,13 @@ async function tentar(segredo) {
 }
 $('#teclado').addEventListener('click', ev => {
   const b = ev.target.closest('button'); if (!b) return;
-  if (b.dataset.k === 'apagar') pinAtual = pinAtual.slice(0, -1);
-  else if (b.dataset.k === 'ok') return tentar(pinAtual);
-  else if (pinAtual.length < 8) pinAtual += b.textContent;
-  $('#erro-bloq').textContent = '';
-  desenharPontos();
+  if (b.dataset.k === 'ok') return tentar(pinAtual);
+  if (b.dataset.k === 'apagar') { pinAtual = pinAtual.slice(0, -1); $('#erro-bloq').textContent = ''; desenharPontos(); return; }
+  juntarAlgarismo(b.textContent);
 });
 document.addEventListener('keydown', ev => {
   if ($('#ecra-bloqueio').hidden || $('#bloq-pin').hidden) return;
-  if (/^\d$/.test(ev.key) && pinAtual.length < 8) { pinAtual += ev.key; desenharPontos(); }
+  if (/^\d$/.test(ev.key)) juntarAlgarismo(ev.key);
   else if (ev.key === 'Backspace') { pinAtual = pinAtual.slice(0, -1); desenharPontos(); }
   else if (ev.key === 'Enter') tentar(pinAtual);
 });
@@ -505,7 +562,17 @@ async function abrirDefinicoes() {
     li.append(s, b); ul.appendChild(li);
   }
   if (!E.apps.length) { const li = document.createElement('li'); li.textContent = 'Nenhuma app instalada.'; li.className = 'suave'; ul.appendChild(li); }
-  $('#d-versao').textContent = `Portal ${VERSAO_PORTAL} · aparelho ${E.aparelho.slice(0, 8)}`;
+  $('#d-versao').textContent = `${VERSAO_PORTAL} · aparelho ${E.aparelho.slice(0, 8)}`;
+  $('#d-tema').value = document.documentElement.dataset.tema || 'original';
+  const vf = await versoesFicheiros();
+  const difer = Object.entries(vf).filter(([, v]) => v !== VERSAO);
+  const fe = $('#d-ficheiros');
+  fe.textContent = 'Ficheiros: ' + Object.entries(vf).map(([f, v]) => `${f} ${v}`).join(' · ');
+  fe.classList.toggle('aviso-versao', difer.length > 0);
+  if (difer.length) fe.textContent = `Atualização incompleta! Estes ficheiros não estão na versão ${VERSAO}: ${difer.map(([f, v]) => `${f} (${v})`).join(', ')}. Envia-os outra vez para a pasta certa no GitHub.`;
+  const er = (await A.conf.get('erros')) || [];
+  $('#d-erros-n').textContent = er.length;
+  $('#d-erros').textContent = er.length ? er.slice().reverse().map(x => `${x.em} — ${x.msg}`).join('\n') : 'Nenhum erro registado.';
   $('#dlg-def').showModal();
 }
 $('#d-ligar').onclick = async () => { if (await ligarGoogle()) { processarFila(); $('#dlg-def').close(); abrirDefinicoes(); } };
@@ -518,6 +585,11 @@ $('#d-desligar').onclick = async () => {
   $('#dlg-def').close();
 };
 $('#d-bloquear').onclick = () => { $('#dlg-def').close(); mostrarBloqueio(); };
+$('#d-tema').onchange = ev => aplicarTema(ev.target.value);
+$('#d-erros-copiar').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#d-erros').textContent); aviso('Copiado.'); } catch (e) { aviso('Não consegui copiar.', { erro: true }); }
+};
+$('#d-erros-limpar').onclick = async () => { await A.conf.set('erros', []); $('#d-erros').textContent = 'Nenhum erro registado.'; $('#d-erros-n').textContent = '0'; };
 $('#d-bloq-min').onchange = async ev => { E.bloquearMin = +ev.target.value; await A.conf.set('bloquearMin', E.bloquearMin); };
 let tipoMudar = 'pin';
 $('#d-mudar').onclick = async () => {
@@ -543,8 +615,18 @@ $('#d-mudar-ok').onclick = async () => {
 $('#d-atualizar-portal').onclick = async () => {
   const reg = await navigator.serviceWorker?.getRegistration();
   if (!reg) return aviso('O modo sem internet não está ativo.', { erro: true });
-  try { await reg.update(); aviso(reg.installing || reg.waiting ? 'A instalar a versão nova…' : 'Já tens a versão mais recente.'); }
-  catch (e) { aviso('Não consegui procurar (sem internet?).', { erro: true }); }
+  try { await reg.update(); }
+  catch (e) { return aviso('Não consegui procurar (sem internet?).', { erro: true }); }
+  const nova = reg.installing || reg.waiting;
+  if (nova) {
+    aviso('A instalar a versão nova… o Portal vai recarregar e pedir o PIN.', { ms: 8000 });
+    nova.addEventListener('statechange', () => { if (nova.state === 'activated') location.reload(); });
+    if (nova.state === 'activated') location.reload();
+  } else {
+    const sw = await versaoSW();
+    aviso(sw === VERSAO ? `Já tens a versão mais recente (${VERSAO}).` : `O GitHub tem a versão ${sw}, mas este ecrã é da ${VERSAO}. A recarregar…`);
+    if (sw !== VERSAO && sw !== '?') setTimeout(() => location.reload(), 1500);
+  }
 };
 $('#d-repor').onclick = async () => {
   $('#dlg-def').close();

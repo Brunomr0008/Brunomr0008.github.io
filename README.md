@@ -1,8 +1,10 @@
-# Portal — LEIA-ME (fase 1.1)
+# Portal — LEIA-ME (versão 1.2)
 
 > Guia completo e ilustrado: os PDFs "Portal - Guias". Este ficheiro é o resumo técnico.
 
 O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tudo no teu Google Drive e funciona sem internet.
+
+**Novidades da 1.2:** temas (Original, Claro, Escuro); o número de círculos do PIN é o do teu PIN, e entra sozinho no último algarismo; já não recarrega depois do PIN quando há uma versão nova; Definições → Sobre mostra a versão de cada ficheiro (deteta atualizações incompletas) e os últimos erros.
 
 **Na fase 1 já funciona:**
 - o Portal instala-se como app e funciona sem internet;
@@ -100,6 +102,9 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | Juntar e atualizar | Um só botão. O Portal reconhece se a app já existe e propõe atualizar; verifica se é mesmo a mesma app e avisa se não parecer (tu confirmas). Nunca cria duplicados sozinho. |
 | Versões | Ficam todas guardadas. Em cada app escolhes no Portal qual a versão ativa (normalmente a mais recente). |
 | Remover uma app | Possível, com aviso e aprovação no telemóvel principal (fase 5). |
+| Versão de cada app | Cada aparelho escolhe a versão ativa de cada app (normalmente a mais recente). |
+| Regras para apps | Ficam dentro do Portal, guardadas no teu Drive (não no GitHub), escondidas atrás de uma palavra-passe, para ver e descarregar (fase 2). |
+| Temas | Original, Claro e Escuro, em Definições → Aspeto (feito na 1.2). |
 | Modos dos aparelhos | No browser (sem instalar): só com internet, nada fica guardado. Instalado no PC: guarda numa pasta que escolhes, com avisos se ela mudar de sítio. Instalado no Android: guarda no telemóvel. Todas as transferências se veem e podem ser canceladas ou retomadas. |
 | Formato das apps | Ficheiro "Regras para apps do Portal": juntar a cada chat de app. |
 | Para mais tarde | Impressão digital, cifra dos dados guardados no aparelho, BitLocker. |
