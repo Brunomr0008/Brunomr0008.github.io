@@ -1,7 +1,7 @@
 // sw.js — service worker do Portal
 // Serve o Portal e os programas das apps a partir do aparelho, para funcionar sem internet.
 // IMPORTANTE: sempre que mudares algum ficheiro do Portal, muda VERSAO para os aparelhos receberem a atualização.
-const VERSAO = '1.2';
+const VERSAO = '1.3';
 const CASCA = 'casca-' + VERSAO;
 const CASCA_FICHEIROS = [
   '/', '/index.html', '/config.js', '/manifest.webmanifest', '/css/portal.css',

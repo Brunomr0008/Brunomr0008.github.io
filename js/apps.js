@@ -2,6 +2,7 @@
 // O programa de cada app fica na Cache Storage "app:<id>:v<versão>", com endereços /a/<id>/<caminho>.
 // O service worker (sw.js) serve esses ficheiros, mesmo sem internet.
 import * as A from './armazem.js';
+export const V = '1.3';
 
 const TIPOS = {
   html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8',
@@ -69,7 +70,20 @@ export async function prepararFicheiros(lista) {
   const html = await ind.blob.text();
   const titulo = (html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] || '').trim()
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-  return { ficheiros, titulo, html, tamanho: ficheiros.reduce((s, f) => s + f.size, 0) };
+  const metas = lerMetas(html);
+  return { ficheiros, titulo, html, tamanho: ficheiros.reduce((s, f) => s + f.size, 0),
+    portalApp: metas['portal-app'] || null, portalVersao: metas['portal-versao'] || null, portalDescricao: metas['portal-descricao'] || null };
+}
+
+// Lê as etiquetas <meta name="portal-…" content="…"> (ver "Regras para apps do Portal")
+export function lerMetas(html) {
+  const r = {};
+  for (const m of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const nome = m[0].match(/\bname\s*=\s*["']([^"']+)["']/i)?.[1];
+    const cont = m[0].match(/\bcontent\s*=\s*["']([^"']*)["']/i)?.[1];
+    if (nome && cont != null && nome.toLowerCase().startsWith('portal-')) r[nome.toLowerCase()] = cont.trim();
+  }
+  return r;
 }
 
 // Grava o programa na cache deste aparelho e os metadados no IndexedDB

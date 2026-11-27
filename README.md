@@ -1,10 +1,17 @@
-# Portal — LEIA-ME (versão 1.2)
+# Portal — LEIA-ME (versão 1.3)
 
 > Guia completo e ilustrado: os PDFs "Portal - Guias". Este ficheiro é o resumo técnico.
 
 O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tudo no teu Google Drive e funciona sem internet.
 
-**Novidades da 1.2:** temas (Original, Claro, Escuro); o número de círculos do PIN é o do teu PIN, e entra sozinho no último algarismo; já não recarrega depois do PIN quando há uma versão nova; Definições → Sobre mostra a versão de cada ficheiro (deteta atualizações incompletas) e os últimos erros.
+## Novidades (cada versão: título em inglês, até 40 caracteres, e descrição em português)
+
+| Versão | Data | Título | O que mudou |
+|---|---|---|---|
+| 1.3 | 26/11/2026 | Settings sections, transfers, history | Definições divididas por secções. Histórico de erros, avisos e informações, com filtro por datas, copiar e exportar. Transferências com progresso real, pausar, retomar e cancelar; um envio interrompido continua onde parou. Indicador Online / Sem internet que testa a ligação a sério. Barra "A atualizar o Portal" no ecrã do PIN. Contagem decrescente depois de 5 tentativas erradas. Temas escolhidos com botões; o Escuro passou a preto. Teclado do PIN mais visível. Editar o nome e a descrição das apps. "Juntar app" reconhece uma app que já existe e manda-te para "Atualizar"; "Atualizar" avisa se o ficheiro não parecer da mesma app. |
+| 1.2 | 26/11/2026 | Themes, PIN dots and update checks | Temas; círculos do PIN do tamanho do PIN e entrada automática; a versão nova instala-se antes do PIN; verificação dos ficheiros; registo de erros. |
+| 1.1 | 26/11/2026 | Fix Cancel button in Add app | O botão Cancelar da janela "Juntar app" voltou a fechar a janela. |
+| 1.0 | 24/11/2026 | First release: the base Portal | Primeira versão: instalar, PIN, Google Drive, juntar, atualizar e abrir apps, sem internet. |
 
 **Na fase 1 já funciona:**
 - o Portal instala-se como app e funciona sem internet;
@@ -99,10 +106,11 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | Apps novas ou atualizadas noutros aparelhos (fase 4) | O Portal **pergunta sempre** antes de transferir. |
 | Cifra (fase 6) | **Todos os dados** das apps ficam cifrados no Drive (registos e ficheiros, PDFs incluídos). Os programas ficam sem cifra. |
 | Recuperação (fase 6) | Telemóvel-chave; código de recuperação impresso; email de recuperação escondido como último recurso. Esquecer o PIN nunca apaga dados. |
-| Juntar e atualizar | Um só botão. O Portal reconhece se a app já existe e propõe atualizar; verifica se é mesmo a mesma app e avisa se não parecer (tu confirmas). Nunca cria duplicados sozinho. |
+| Juntar e atualizar | Dois botões separados. "Juntar app" é só para apps novas: se a app já existir, avisa e manda-te para "⋯ → Atualizar". "Atualizar" avisa se o ficheiro não parecer da mesma app (tu confirmas). |
 | Versões | Ficam todas guardadas. Em cada app escolhes no Portal qual a versão ativa (normalmente a mais recente). |
 | Remover uma app | Possível, com aviso e aprovação no telemóvel principal (fase 5). |
 | Versão de cada app | Cada aparelho escolhe a versão ativa de cada app (normalmente a mais recente). |
+| Versão do Portal | Uma só (a do GitHub). Para voltar atrás, envia-se outra vez a versão antiga para o GitHub. As versões ficam arquivadas na secção Documentação (por fazer). |
 | Regras para apps | Ficam dentro do Portal, guardadas no teu Drive (não no GitHub), escondidas atrás de uma palavra-passe, para ver e descarregar (fase 2). |
 | Temas | Original, Claro e Escuro, em Definições → Aspeto (feito na 1.2). |
 | Modos dos aparelhos | No browser (sem instalar): só com internet, nada fica guardado. Instalado no PC: guarda numa pasta que escolhes, com avisos se ela mudar de sítio. Instalado no Android: guarda no telemóvel. Todas as transferências se veem e podem ser canceladas ou retomadas. |

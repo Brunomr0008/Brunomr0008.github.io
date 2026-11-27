@@ -2,7 +2,7 @@
 // Guarda-se só um "resumo" (PBKDF2-SHA256), nunca o PIN.
 import { conf } from './armazem.js';
 
-export const V = '1.2';
+export const V = '1.3';
 const ITERACOES = 310000;
 const TENTATIVAS_LIVRES = 5;
 
@@ -28,6 +28,10 @@ export function validar(segredo, tipo) {
 
 export async function existe() { return !!(await conf.get('cofre')); }
 export async function tipo() { return (await conf.get('cofre'))?.tipo || 'pin'; }
+export async function espera() {
+  const f = (await conf.get('falhas')) || { ate: 0 };
+  return f.ate > Date.now() ? Math.ceil((f.ate - Date.now()) / 1000) : 0;
+}
 export async function comprimento() { return (await conf.get('cofre'))?.comprimento || 0; }
 
 export async function definir(segredo, tipo) {

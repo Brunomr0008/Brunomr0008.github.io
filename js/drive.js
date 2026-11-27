@@ -1,10 +1,11 @@
 // drive.js — Google Drive (só a permissão drive.file: o Portal vê apenas o que ele próprio cria)
 
+export const V = '1.3';
 export const ESCOPO = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
 const PASTA = 'application/vnd.google-apps.folder';
-const TEMP = 'programa (a enviar)';
+const TEMP = 'programa (a enviar';   // + ' vN)'
 const LIMITE_SIMPLES = 5 * 1024 * 1024;
 
 let token = null, expira = 0;
@@ -74,10 +75,14 @@ export function revogar() {
 /* ---------------- Pedidos ---------------- */
 async function pedido(url, opcoes = {}) {
   if (!temToken()) throw erro('sem_token', 'É preciso ligar ao Drive.');
+  if (opcoes.signal?.aborted) throw erro('cancelado', 'Cancelado.');
   let r;
   try {
     r = await fetch(url, { ...opcoes, headers: { ...(opcoes.headers || {}), Authorization: 'Bearer ' + token } });
-  } catch (e) { throw erro('rede', 'Sem ligação ao Google Drive.'); }
+  } catch (e) {
+    if (e.name === 'AbortError') throw erro('cancelado', 'Cancelado.');
+    throw erro('rede', 'Sem ligação ao Google Drive.');
+  }
   if (r.status === 401) { esquecerToken(); throw erro('sem_token', 'O acesso ao Drive expirou. Liga outra vez.'); }
   if (!r.ok) {
     let t = ''; try { t = await r.text(); } catch (e) {}
@@ -111,30 +116,63 @@ export async function pasta(nome, pai) {
   return f.length ? f[0].id : criarPasta(nome, pai);
 }
 
-export async function criarFicheiro(nome, pai, blob, tipo) {
+// Envio com XMLHttpRequest: dá o progresso dentro de cada ficheiro e pode ser cancelado
+function enviarXHR(metodo, url, cabecalhos, corpo, { progresso, sinal } = {}) {
+  return new Promise((res, rej) => {
+    if (sinal?.aborted) return rej(erro('cancelado', 'Cancelado.'));
+    const x = new XMLHttpRequest();
+    x.open(metodo, url);
+    for (const [k, v] of Object.entries(cabecalhos)) x.setRequestHeader(k, v);
+    x.setRequestHeader('Authorization', 'Bearer ' + token);
+    if (progresso) x.upload.onprogress = e => progresso(e.loaded);
+    const parar = () => x.abort();
+    sinal?.addEventListener('abort', parar, { once: true });
+    x.onload = () => {
+      sinal?.removeEventListener('abort', parar);
+      if (x.status === 401) { esquecerToken(); return rej(erro('sem_token', 'O acesso ao Drive expirou. Liga outra vez.')); }
+      if (x.status < 200 || x.status >= 300) return rej(erro(x.status === 403 || x.status === 429 ? 'limite' : 'drive', `Drive (${x.status}): ${x.responseText.slice(0, 200)}`));
+      try { res(JSON.parse(x.responseText || '{}')); } catch (e) { res({}); }
+    };
+    x.onerror = () => { sinal?.removeEventListener('abort', parar); rej(erro('rede', 'Sem ligação ao Google Drive.')); };
+    x.onabort = () => rej(erro('cancelado', 'Cancelado.'));
+    x.send(corpo);
+  });
+}
+
+export async function criarFicheiro(nome, pai, blob, tipo, { progresso, sinal } = {}) {
+  if (!temToken()) throw erro('sem_token', 'É preciso ligar ao Drive.');
   const meta = { name: nome, parents: [pai], mimeType: tipo || blob.type || 'application/octet-stream' };
   if (blob.size > LIMITE_SIMPLES) {
     // envio "resumable": um pedido para abrir a sessão, outro com o conteúdo
     const r = await pedido(`${UP}/files?uploadType=resumable&fields=id`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': meta.mimeType, 'X-Upload-Content-Length': String(blob.size) },
+      method: 'POST', signal: sinal,
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': meta.mimeType },
       body: JSON.stringify(meta),
     });
     const sessao = r.headers.get('Location');
-    if (sessao) {
-      const r2 = await pedido(sessao, { method: 'PUT', headers: { 'Content-Type': meta.mimeType }, body: blob });
-      return (await r2.json()).id;
-    }
+    if (sessao) return (await enviarXHR('PUT', sessao, { 'Content-Type': meta.mimeType }, blob, { progresso, sinal })).id;
   }
   const fronteira = 'portal' + Math.random().toString(36).slice(2);
   const corpo = new Blob([
     `--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${fronteira}\r\nContent-Type: ${meta.mimeType}\r\n\r\n`,
     blob, `\r\n--${fronteira}--`,
   ]);
-  const r = await json(`${UP}/files?uploadType=multipart&fields=id`, {
-    method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + fronteira }, body: corpo,
-  });
+  const extra = corpo.size - blob.size;
+  const r = await enviarXHR('POST', `${UP}/files?uploadType=multipart&fields=id`, { 'Content-Type': 'multipart/related; boundary=' + fronteira }, corpo,
+    { progresso: progresso && (n => progresso(Math.max(0, Math.min(blob.size, n - extra)))), sinal });
   return r.id;
+}
+
+// Lista o conteúdo de uma pasta (id, nome, tipo, tamanho)
+export async function listar(pai) {
+  const q = `'${pai}' in parents and trashed=false`;
+  let todos = [], pagina = '';
+  do {
+    const r = await json(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size)&pageSize=1000&spaces=drive${pagina ? '&pageToken=' + pagina : ''}`);
+    todos = todos.concat(r.files || []);
+    pagina = r.nextPageToken || '';
+  } while (pagina);
+  return todos;
 }
 
 export async function mudarConteudo(id, blob, tipo) {
@@ -202,14 +240,31 @@ function dataURLparaBlob(u) {
 
 // Envia o programa de uma app para Portal/apps/<id>/programa/.
 // O programa anterior passa para versoes/v<n>/. Se o envio for interrompido, recomeça do zero na próxima vez.
-export async function enviarPrograma(raiz, app, lerFicheiro, progresso, aparelhoId) {
+// Se o envio for interrompido (internet, pausa), na próxima vez continua: os ficheiros que já lá estão não voltam a ser enviados.
+export async function enviarPrograma(raiz, app, lerFicheiro, progresso, aparelhoId, sinal) {
   const apps = await pasta('apps', raiz);
   const ap = await pasta(app.id, apps);
+  const nomeTemp = `${TEMP} v${app.versao})`;
 
-  for (const f of await procurar(TEMP, ap, true)) await paraOLixo(f.id);
-  const temp = await criarPasta(TEMP, ap);
+  // pastas temporárias de outras versões: para o lixo
+  let temp = null;
+  for (const f of await listar(ap)) {
+    if (f.mimeType !== PASTA || !f.name.startsWith(TEMP)) continue;
+    if (f.name === nomeTemp && !temp) temp = f.id; else await paraOLixo(f.id);
+  }
+  if (!temp) temp = await criarPasta(nomeTemp, ap);
 
+  // o que já foi enviado numa tentativa anterior
   const pastas = new Map([['', temp]]);
+  const existentes = new Map();
+  async function mapear(id, prefixo) {
+    for (const f of await listar(id)) {
+      const rel = prefixo ? prefixo + '/' + f.name : f.name;
+      if (f.mimeType === PASTA) { pastas.set(rel, f.id); await mapear(f.id, rel); }
+      else existentes.set(rel, { id: f.id, size: +f.size || 0 });
+    }
+  }
+  await mapear(temp, '');
   async function dir(rel) {
     if (pastas.has(rel)) return pastas.get(rel);
     const i = rel.lastIndexOf('/');
@@ -223,14 +278,19 @@ export async function enviarPrograma(raiz, app, lerFicheiro, progresso, aparelho
   let feito = 0;
   progresso?.(0, total);
   for (const f of app.ficheiros) {
+    if (sinal?.aborted) throw erro('cancelado', 'Cancelado.');
+    const ja = existentes.get(f.path);
+    if (ja && ja.size === f.size) { feito += f.size; progresso?.(feito, total); continue; }
+    if (ja) await paraOLixo(ja.id);
     const i = f.path.lastIndexOf('/');
     const d = await dir(i < 0 ? '' : f.path.slice(0, i));
-    await criarFicheiro(f.path.slice(i + 1), d, await lerFicheiro(f.path), f.type);
+    const base = feito;
+    await criarFicheiro(f.path.slice(i + 1), d, await lerFicheiro(f.path), f.type, { progresso: n => progresso?.(base + n, total), sinal });
     feito += f.size;
     progresso?.(feito, total);
   }
   const temIconeProprio = !!app.icone && !app.ficheiros.some(f => f.path === 'icone.png');
-  if (temIconeProprio) await criarFicheiro('icone.png', temp, dataURLparaBlob(app.icone), 'image/png');
+  if (temIconeProprio && !existentes.has('icone.png')) await criarFicheiro('icone.png', temp, dataURLparaBlob(app.icone), 'image/png', { sinal });
 
   // versão anterior → versoes/
   const atuais = await procurar('programa', ap, true);
@@ -254,4 +314,14 @@ export async function enviarPrograma(raiz, app, lerFicheiro, progresso, aparelho
     enviadoPor: aparelhoId || null,
   });
   return ap;
+}
+
+// Muda o nome/descrição no app.json do Drive (se a app já lá estiver)
+export async function atualizarAppJson(raiz, app) {
+  const apps = (await procurar('apps', raiz, true))[0]; if (!apps) return false;
+  const ap = (await procurar(app.id, apps.id, true))[0]; if (!ap) return false;
+  const aj = (await procurar('app.json', ap.id, false))[0]; if (!aj) return false;
+  const atual = await lerJSON(aj.id);
+  await escreverJSON('app.json', ap.id, { ...atual, nome: app.nome, descricao: app.descricao || '', atualizadoEm: new Date().toISOString() });
+  return true;
 }
