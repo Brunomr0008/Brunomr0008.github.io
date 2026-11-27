@@ -5,12 +5,14 @@ import * as Drive from './drive.js';
 import * as Apps from './apps.js';
 import * as Dados from './dados.js';
 
-const VERSAO = '1.5';
-const VERSAO_PORTAL = 'Portal 1.5 · 27/11/2026';
+const VERSAO = '1.6';
+const VERSAO_PORTAL = 'Portal 1.6 · 27/11/2026';
 // Versão que cada ficheiro deve ter nesta versão do Portal (para detetar atualizações incompletas)
-const ESPERADO = { 'index.html': '1.5', 'css/portal.css': '1.5', 'js/main.js': '1.5', 'js/cofre.js': '1.4', 'js/drive.js': '1.5', 'js/apps.js': '1.3', 'js/dados.js': '1.5', 'js/gavetabd.js': '1.5', 'js/gaveta.js': '1.5', 'sw.js': '1.5' };
+const ESPERADO = { 'index.html': '1.6', 'css/portal.css': '1.6', 'js/main.js': '1.6', 'js/cofre.js': '1.4', 'js/drive.js': '1.5', 'js/apps.js': '1.3', 'js/dados.js': '1.6', 'js/gavetabd.js': '1.5', 'js/gaveta.js': '1.5', 'sw.js': '1.6' };
 // Novidades: título em inglês (máx. 40 caracteres) e descrição em português
 const NOVIDADES = [
+  { v: '1.6', data: '27/11/2026', titulo: 'Strict updates, Documentation editing',
+    texto: 'Com internet e uma versão nova do Portal no GitHub, já não há "Continuar sem atualizar": podes entrar com o PIN, mas as apps, a Documentação, as definições e os envios ficam parados até a versão nova estar instalada. Documentação: apagar (vai para o lixo do Drive, 30 dias), mudar o nome e juntar pastas inteiras, além de ficheiros. Transferências: deixam de aparecer linhas repetidas; o total conta tudo o que falta enviar, também o que vai chegando durante uma importação; a velocidade é a dos últimos 20 segundos. Os dados vão para o Drive de seguida, sem esperar pela volta seguinte.' },
   { v: '1.5', data: '27/11/2026', titulo: 'App data drawer, Documentation, updates',
     texto: 'Fase 2: as apps passam a guardar dados no Portal (a "gaveta" window.claude: base de dados, ficheiros como PDFs e descarregar), tal como no Claude, sem mudar nada nas apps. Os dados ficam neste aparelho, funcionam sem internet e vão sozinhos para o Drive, só o que mudou (Portal/apps/<app>/dados/). Cada app tem o seu próprio armazenamento interno (localStorage), separado das outras. Nova secção Documentação, protegida pelo PIN, guardada no Drive: cada versão nova do Portal arquiva-se lá sozinha, e podes juntar guias, Regras e outros ficheiros. Com internet, um aparelho com uma versão antiga do Portal fica bloqueado até instalar a mais recente.' },
   { v: '1.4', data: '27/11/2026', titulo: 'Single PIN, version folders, faster sync',
@@ -232,9 +234,8 @@ let tAtualizacao = null;
 function mostrarAtualizacao(sim, txt, fixo = false) {
   $('#a-atualizar').hidden = !sim;
   $('#a-atualizar-txt').textContent = txt || 'Não feches esta janela. Demora só uns segundos.';
-  if (!aForcar) $('#a-atualizar-btns').hidden = true;
   clearTimeout(tAtualizacao);
-  if (sim && !fixo && !aForcar) tAtualizacao = setTimeout(() => {
+  if (sim && !fixo) tAtualizacao = setTimeout(() => {
     $('#a-atualizar').hidden = true;
     registar('aviso', 'A atualização do Portal está a demorar; continua em segundo plano.');
   }, 60000);
@@ -254,40 +255,40 @@ async function versaoPublicada() {
     return (await r.json()).versao || null;
   } catch (e) { return null; }
 }
-let aForcar = false;
+// Com internet, se o GitHub tiver uma versão mais recente: deixa entrar com o PIN, mas bloqueia tudo o resto
+// (apps, Documentação, definições e envios) até a versão nova estar instalada. Não há forma de continuar sem atualizar.
 async function verificarVersao() {
-  if (aForcar || !navigator.serviceWorker?.controller) return false;
+  if (!navigator.serviceWorker?.controller) return false;
   const v = await versaoPublicada();
   if (!v || !maisRecente(v, VERSAO)) return false;
-  registar('info', `Há uma versão nova do Portal (${v}); este aparelho tem a ${VERSAO}.`);
-  // com uma app aberta, não a fecha de repente: avisa, e bloqueia quando voltares ao início
-  if (E.desbloqueado && E.appAberta) {
-    E.versaoPendente = v;
-    aviso(`Há uma versão nova do Portal (${v}). Atualiza quando puderes.`, { acao: { texto: 'Atualizar agora', fn: () => forcarAtualizacao(v) }, ms: 30000, registo: false });
-    return true;
-  }
-  forcarAtualizacao(v);
+  if (E.desatualizado !== v) registar('aviso', `Há uma versão nova do Portal (${v}); este aparelho tem a ${VERSAO}. É preciso atualizar.`);
+  E.desatualizado = v;
+  E.forcarRecarga = true;   // quando a versão nova chegar, o Portal recarrega sozinho
+  pedirVersaoNova();
+  aplicarBloqueioVersao();
   return true;
 }
-async function forcarAtualizacao(v) {
-  if (aForcar) return;
-  aForcar = true; E.forcarRecarga = true;
-  mostrarAtualizacao(true, `A instalar a versão ${v} do Portal. Não feches esta janela.`, true);
-  $('#a-atualizar-btns').hidden = true; $('#a-continuar').hidden = true;
-  try { const reg = await navigator.serviceWorker.getRegistration(); await reg?.update(); } catch (e) {}
-  // Se a versão nova não chegar (o GitHub pode demorar a publicar), deixa tentar outra vez; mais tarde, continuar
-  setTimeout(() => {
-    if ($('#a-atualizar').hidden) return;
-    $('#a-atualizar-txt').textContent = `A versão ${v} ainda não chegou a este aparelho. O GitHub pode demorar alguns minutos a publicá-la.`;
-    $('#a-atualizar-btns').hidden = false;
-  }, 45000);
-  setTimeout(() => { if (!$('#a-atualizar').hidden) $('#a-continuar').hidden = false; }, 180000);
+function pedirVersaoNova() { navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}); }
+let tPedirVersao = null, tTextoVersao = null;
+function aplicarBloqueioVersao() {
+  const v = E.desatualizado;
+  if (!v) return false;
+  $('#bloq-versao').textContent = `Há uma versão nova do Portal (${v}). Depois de entrares, é preciso atualizar.`;
+  $('#bloq-versao').hidden = false;
+  if (!E.desbloqueado) return true;
+  for (const d of ['#dlg-def', '#dlg-docs', '#dlg-pin2', '#dlg-juntar', '#dlg-app', '#dlg-conf']) if ($(d)?.open) $(d).close();
+  $('#moldura').inert = true;
+  $('#pa-versao').textContent = v;
+  $('#pa-estado').textContent = 'A instalar a versão nova…';
+  $('#precisa-atualizar').hidden = false;
+  if (!tPedirVersao) tPedirVersao = setInterval(pedirVersaoNova, 30000);
+  clearTimeout(tTextoVersao);
+  tTextoVersao = setTimeout(() => {
+    $('#pa-estado').textContent = 'A versão nova ainda não chegou a este aparelho. O GitHub pode demorar alguns minutos a publicá-la. Toca em "Atualizar agora" para tentar outra vez.';
+  }, 30000);
+  return true;
 }
-$('#a-tentar').onclick = () => { $('#a-atualizar-btns').hidden = true; $('#a-atualizar-txt').textContent = 'A tentar outra vez…'; location.reload(); };
-$('#a-continuar').onclick = () => {
-  aForcar = false; E.forcarRecarga = false; mostrarAtualizacao(false);
-  registar('aviso', 'Continuaste sem atualizar o Portal.');
-};
+$('#pa-atualizar').onclick = () => { $('#pa-estado').textContent = 'A atualizar…'; pedirVersaoNova(); setTimeout(() => location.reload(), 1500); };
 setInterval(() => { if (!document.hidden && E.online) verificarVersao(); }, 15 * 60 * 1000);
 
 /* ================= primeira configuração ================= */
@@ -468,6 +469,7 @@ function desbloquear() {
   $('#moldura').inert = false;
   registar('info', 'Portal desbloqueado.');
   sincronizarPin();
+  aplicarBloqueioVersao();
   // pede ao browser para não apagar os dados das apps quando precisar de espaço
   try { navigator.storage?.persist?.().catch(() => {}); } catch (e) {}
   if (!E.appAberta && $('#ecra-inicio').hidden) entrarNoInicio();
@@ -477,7 +479,7 @@ document.addEventListener('visibilitychange', () => {
   if (E.desbloqueado && E.escondidoEm && Date.now() - E.escondidoEm >= E.bloquearMin * 60000) mostrarBloqueio();
   testarLigacao();
   if (E.desbloqueado) processarFila();
-  if (E.online && !E.appAberta) verificarVersao();
+  if (E.online) verificarVersao();
 });
 
 /* ================= início ================= */
@@ -538,6 +540,15 @@ function calcularEstado() {
   if (E.pendentes) return { cls: 'aviso', txt: `↑ ${E.pendentes} por enviar`, acao: 'transf' };
   return { cls: 'ok', txt: '✓ Tudo na nuvem', acao: 'enviar' };
 }
+// Velocidade dos envios: média dos últimos 20 segundos (não desde o início)
+function velocidade(a) {
+  const agora = Date.now();
+  a.amostras = (a.amostras || []).filter(([t]) => agora - t <= 20000);
+  if (!a.amostras.length || agora - a.amostras[a.amostras.length - 1][0] > 500) a.amostras.push([agora, a.feito]);
+  const [t0, f0] = a.amostras[0];
+  const seg = (agora - t0) / 1000;
+  return seg >= 3 ? Math.max(0, (a.feito - f0) / seg) : 0;
+}
 function atualizarEstado() {
   const s = calcularEstado();
   for (const el of [$('#estado'), $('#estado-app')]) {
@@ -593,6 +604,7 @@ async function garantirRaiz(verificar = false) {
 // Envia para o Drive o que falta: programas de apps, alterações de nome/descrição e os dados das apps
 async function processarFila(manual = false) {
   if (E.aProcessar || E.aEnviar) return;
+  if (E.desatualizado) { atualizarEstado(); return; }   // com o Portal desatualizado, os envios esperam pela versão nova
   E.aProcessar = true;
   let mudou = false;
   try {
@@ -653,10 +665,23 @@ async function enviarDados() {
   E.controlo = new AbortController();
   E.aEnviar = { id: 'dados', nome: 'dados', feito: 0, total: c.bytes, inicio: Date.now() };
   atualizarEstado();
+  // O total = o que já acabou + o que ainda falta (lido da base de dados de 2 em 2 segundos,
+  // para contar também o que for chegando enquanto se envia, por exemplo durante uma importação)
+  let falta = c.bytes, lidoEm = 0;
   try {
     const r = await Dados.enviar(raiz, {
       sinal: E.controlo.signal,
-      progresso: (app, feito, total) => { if (!E.aEnviar) return; E.aEnviar.nome = `${nomes[app] || app} (dados)`; E.aEnviar.feito = feito; E.aEnviar.total = total; atualizarEstado(); },
+      progresso: (app, enviado, concluido) => {
+        if (!E.aEnviar) return;
+        if (Date.now() - lidoEm > 2000) {
+          lidoEm = Date.now();
+          contarPendentes().then(() => { falta = Object.values(E.dadosPend).reduce((s, d) => s + d.bytes, 0); }).catch(() => {});
+        }
+        E.aEnviar.nome = `${nomes[app] || app} (dados)`;
+        E.aEnviar.feito = enviado;
+        E.aEnviar.total = Math.max(enviado, concluido + falta);
+        atualizarEstado();
+      },
     });
     registar('info', `Dados das apps enviados para o Drive: ${r.registos} registo(s), ${r.ficheiros} ficheiro(s)${r.apagados ? `, ${r.apagados} apagado(s)` : ''}.`);
     return r.registos + r.ficheiros + r.apagados || 1;
@@ -700,13 +725,14 @@ function tratarErroDrive(e) {
 }
 
 /* ================= transferências ================= */
+let seqTransf = 0;
 async function desenharTransf() {
+  const seq = ++seqTransf;
   const at = $('#t-atual');
   if (E.aEnviar) {
-    const { nome, feito, total, inicio } = E.aEnviar;
+    const { nome, feito, total } = E.aEnviar;
     const p = total ? feito / total : 0;
-    const seg = (Date.now() - inicio) / 1000;
-    const vel = seg > 2 ? feito / seg : 0;
+    const vel = velocidade(E.aEnviar);
     const resta = vel ? Math.max(0, (total - feito) / vel) : 0;
     at.innerHTML = '';
     const t = document.createElement('div');
@@ -715,8 +741,10 @@ async function desenharTransf() {
     b.innerHTML = `<div style="width:${(p * 100).toFixed(1)}%"></div><span>${Math.floor(p * 100)}%</span>`;
     at.append(t, b);
   } else at.textContent = E.pausado ? 'Envios em pausa.' : !E.online ? 'Sem internet: os envios continuam quando a ligação voltar.' : 'Nada a enviar neste momento.';
+  const fila = await A.todos('fila');
+  if (seq !== seqTransf) return;   // entretanto começou outro desenho: este já não conta (evita linhas repetidas)
   const ul = $('#t-fila'); ul.textContent = '';
-  for (const { chave, valor } of await A.todos('fila')) {
+  for (const { chave, valor } of fila) {
     const app = E.apps.find(a => a.id === valor.id);
     const li = document.createElement('li');
     const s = document.createElement('span');
@@ -762,6 +790,7 @@ $('#t-retomar').onclick = async () => {
 
 /* ================= abrir e fechar apps ================= */
 function abrirApp(id, { historico = true } = {}) {
+  if (aplicarBloqueioVersao()) return;
   const app = E.apps.find(a => a.id === id);
   if (!app) { aviso('Essa app não está neste aparelho.', { erro: true }); if (location.hash) history.replaceState(null, '', '/'); return; }
   if (!instalado() && !E.online) { aviso('No browser, as apps só abrem com internet. Para usar sem internet, instala o Portal.', { erro: true }); if (location.hash) history.replaceState(null, '', '/'); return; }
@@ -773,7 +802,6 @@ function abrirApp(id, { historico = true } = {}) {
   if (historico) history.pushState({ app: id }, '', '#app=' + encodeURIComponent(id));
 }
 function fecharApp() {
-  if (E.versaoPendente) { const v = E.versaoPendente; E.versaoPendente = null; forcarAtualizacao(v); }
   $('#moldura').src = 'about:blank';
   E.appAberta = null;
   document.title = 'Portal';
@@ -1223,6 +1251,7 @@ function pedirPin(texto) {
 }
 $('#btn-docs').onclick = () => abrirDocs();
 async function abrirDocs() {
+  if (aplicarBloqueioVersao()) return;
   if (!E.online) return aviso('A Documentação está no Google Drive: precisa de internet.', { erro: true });
   if (!Drive.temToken() && !(await ligarGoogle())) return;
   if (!(await pedirPin('A Documentação está protegida. Escreve o PIN outra vez.'))) return;
@@ -1267,7 +1296,7 @@ async function desenharDocs() {
   if (atualDocs() !== at) return;
   l.sort((a, b) => (b.mimeType === PASTA) - (a.mimeType === PASTA) || a.name.localeCompare(b.name, 'pt', { numeric: true }));
   const np = l.filter(f => f.mimeType === PASTA).length;
-  $('#docs-info').textContent = l.length ? `${np} pasta${np === 1 ? '' : 's'}, ${l.length - np} ficheiro${l.length - np === 1 ? '' : 's'}. Só para ler: o Portal não apaga nem altera nada aqui.` : 'Pasta vazia. Usa "+ Juntar ficheiros".';
+  $('#docs-info').textContent = l.length ? `${np} pasta${np === 1 ? '' : 's'}, ${l.length - np} ficheiro${l.length - np === 1 ? '' : 's'}.` : 'Pasta vazia. Usa "+ Juntar ficheiros" ou "+ Juntar pasta".';
   for (const f of l) {
     const li = document.createElement('li');
     const b = document.createElement('button'); b.type = 'button'; b.className = 'abrir';
@@ -1276,7 +1305,16 @@ async function desenharDocs() {
     b.append(ic, nm);
     if (f.mimeType !== PASTA && f.size) { const s = document.createElement('small'); s.textContent = tam(+f.size); b.appendChild(s); }
     b.onclick = () => f.mimeType === PASTA ? (D.pilha.push({ id: f.id, nome: f.name }), desenharDocs()) : verDoc(f);
-    li.appendChild(b); ul.appendChild(li);
+    li.appendChild(b);
+    // as 4 pastas principais não se apagam nem mudam de nome
+    if (!(D.pilha.length === 1 && DOCS_PASTAS.includes(f.name) && f.mimeType === PASTA)) {
+      const r = document.createElement('button'); r.type = 'button'; r.className = 'acao'; r.textContent = '✎'; r.title = 'Mudar o nome'; r.setAttribute('aria-label', 'Mudar o nome de ' + f.name);
+      r.onclick = () => mudarNomeDoc(f);
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'acao perigo'; x.textContent = '🗑'; x.title = 'Apagar'; x.setAttribute('aria-label', 'Apagar ' + f.name);
+      x.onclick = () => apagarDoc(f);
+      li.append(r, x);
+    }
+    ul.appendChild(li);
   }
 }
 const TEXTO_DOC = /\.(md|txt|json|csv|js|css|html?|webmanifest|svg|log)$/i;
@@ -1303,24 +1341,61 @@ function fecharVer() {
   if (D.url) { URL.revokeObjectURL(D.url); D.url = null; }
 }
 $('#docs-ver-fechar').onclick = fecharVer;
+async function mudarNomeDoc(f) {
+  const nome = (prompt('Nome novo:', f.name) || '').trim();
+  if (!nome || nome === f.name) return;
+  try { await Drive.mexer(f.id, { nome }); registar('info', `Documentação: "${f.name}" passou a chamar-se "${nome}".`); }
+  catch (e) { tratarErroDrive(e); }
+  desenharDocs();
+}
+async function apagarDoc(f) {
+  const pasta = f.mimeType === PASTA;
+  const ok = await confirmar(`Apagar “${f.name}”?`,
+    (pasta ? 'A pasta e tudo o que está dentro dela vão' : 'O ficheiro vai') + ' para o lixo do Google Drive. Podes recuperá-' + (pasta ? 'la' : 'lo') + ' no Drive durante 30 dias.',
+    { sim: 'Apagar', perigo: true });
+  if (!ok) return;
+  try { await Drive.paraOLixo(f.id); registar('aviso', `Documentação: "${f.name}" apagado (está no lixo do Drive).`); aviso('Apagado. Está no lixo do Drive durante 30 dias.', { registo: false }); }
+  catch (e) { tratarErroDrive(e); }
+  desenharDocs();
+}
 $('#docs-juntar').onclick = () => $('#docs-in').click();
-$('#docs-in').onchange = async ev => {
-  const fs = [...ev.target.files]; ev.target.value = '';
+$('#docs-juntar-pasta').onclick = () => $('#docs-in-pasta').click();
+$('#docs-in').onchange = ev => { const fs = [...ev.target.files]; ev.target.value = ''; juntarNaDocs(fs, false); };
+$('#docs-in-pasta').onchange = ev => { const fs = [...ev.target.files]; ev.target.value = ''; juntarNaDocs(fs, true); };
+// Envia ficheiros (ou uma pasta inteira, com as subpastas) para a pasta da Documentação que está aberta
+async function juntarNaDocs(fs, comPastas) {
   if (!fs.length) return;
   const at = atualDocs();
-  let n = 0;
+  const pastas = new Map([['', at.id]]);
+  async function pastaPara(rel) {
+    if (pastas.has(rel)) return pastas.get(rel);
+    const i = rel.lastIndexOf('/');
+    const pai = await pastaPara(i < 0 ? '' : rel.slice(0, i));
+    const id = await Drive.pasta(rel.slice(i + 1), pai);
+    pastas.set(rel, id);
+    return id;
+  }
+  const total = fs.reduce((s, f) => s + f.size, 0);
+  let n = 0, feito = 0;
+  $('#docs-acoes').classList.add('ocupado');
   try {
     for (const f of fs) {
       n++;
-      await Drive.criarFicheiro(f.name, at.id, f, f.type || 'application/octet-stream', {
-        progresso: b => { $('#docs-info').textContent = `A enviar "${f.name}" (${n} de ${fs.length})… ${f.size ? Math.floor(100 * b / f.size) : 100}%`; },
+      const cam = comPastas && f.webkitRelativePath ? f.webkitRelativePath : f.name;
+      const dir = cam.includes('/') ? cam.slice(0, cam.lastIndexOf('/')) : '';
+      const pai = await pastaPara(dir);
+      await Drive.criarFicheiro(f.name, pai, f, f.type || 'application/octet-stream', {
+        progresso: b => { $('#docs-info').textContent = `A enviar "${cam}" (${n} de ${fs.length})… ${total ? Math.floor(100 * (feito + b) / total) : 100}%`; },
       });
+      feito += f.size;
     }
-    registar('info', `Documentação: ${fs.length} ficheiro(s) juntado(s) em "${at.nome}".`);
-    aviso(fs.length === 1 ? 'Ficheiro guardado na Documentação.' : `${fs.length} ficheiros guardados na Documentação.`, { registo: false });
+    const raizNome = comPastas && fs[0].webkitRelativePath ? fs[0].webkitRelativePath.split('/')[0] : '';
+    registar('info', comPastas ? `Documentação: pasta "${raizNome}" juntada em "${at.nome}" (${fs.length} ficheiros).` : `Documentação: ${fs.length} ficheiro(s) juntado(s) em "${at.nome}".`);
+    aviso(comPastas ? `Pasta "${raizNome}" guardada na Documentação.` : fs.length === 1 ? 'Ficheiro guardado na Documentação.' : `${fs.length} ficheiros guardados na Documentação.`, { registo: false });
   } catch (e) { tratarErroDrive(e); }
+  $('#docs-acoes').classList.remove('ocupado');
   desenharDocs();
-};
+}
 $('#docs-pasta').onclick = async () => {
   const nome = (prompt('Nome da pasta nova:') || '').trim();
   if (!nome) return;

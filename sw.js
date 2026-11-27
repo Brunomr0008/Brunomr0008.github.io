@@ -2,7 +2,7 @@
 // Serve o Portal e os programas das apps a partir do aparelho, para funcionar sem internet.
 // IMPORTANTE: sempre que mudares algum ficheiro do Portal, muda VERSAO para os aparelhos receberem a atualização.
 importScripts('/js/gavetabd.js');   // a base de dados das apps (para servir /_blob/)
-const VERSAO = '1.5';
+const VERSAO = '1.6';
 const CASCA = 'casca-' + VERSAO;
 const CASCA_FICHEIROS = [
   '/', '/index.html', '/config.js', '/manifest.webmanifest', '/css/portal.css',

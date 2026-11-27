@@ -1,6 +1,6 @@
 /* Portal — estilos */
 :root{
-  --portal-versao:"1.5";
+  --portal-versao:"1.6";
   --raio:16px;
   font-family:"Segoe UI",Roboto,"Helvetica Neue",system-ui,sans-serif;
   color:var(--tinta); background:var(--fundo);
@@ -251,3 +251,12 @@ details summary{cursor:pointer;color:var(--suave);font-size:.9rem;margin:.4rem 0
 .docs-ver pre{flex:1;margin:0;padding:1rem 1.4rem;overflow:auto;white-space:pre-wrap;font-size:.92rem;line-height:1.5;color:var(--tinta)}
 .docs-ver iframe{flex:1;border:0;width:100%;background:#fff}
 .linha-btns.centro{justify-content:center}
+
+/* ---- 1.6 ---- */
+.aviso-versao-bloq{background:var(--aviso-suave);color:var(--tinta);border-radius:10px;padding:.5rem .7rem;font-size:.85rem;margin:.6rem 0 0}
+#precisa-atualizar{background:rgba(0,0,0,.72)}
+#precisa-atualizar p{margin:.5rem 0}
+.docs-lista .acao{flex:none;border:0;background:none;color:var(--suave);font-size:1rem;cursor:pointer;padding:.45rem .5rem;border-radius:8px}
+.docs-lista .acao:hover{background:var(--fundo2);color:var(--tinta)}
+.docs-lista .acao.perigo:hover{color:var(--erro)}
+.ocupado{pointer-events:none;opacity:.5}

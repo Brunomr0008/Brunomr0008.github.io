@@ -2,7 +2,7 @@
 // No Drive:  Portal/apps/<id>/dados/registos/<coleção>/<id>.json   e   Portal/apps/<id>/dados/ficheiros/<nome> (<id>).<ext>
 import * as Drive from './drive.js';
 
-export const V = '1.5';
+export const V = '1.6';
 const BD = () => self.GavetaBD;
 const PARALELO = 4;
 
@@ -55,18 +55,13 @@ async function marcar(loja, chave, ver, driveId, apagar) {
   await BD().fim(t);
 }
 
-// Envia tudo o que está pendente. progresso(app, feito, total) em bytes.
+// Envia tudo o que está pendente, em rondas, até não sobrar nada (o que for chegando entretanto também vai).
+// progresso(app, enviado, concluido): enviado = bytes já enviados nesta sessão (com os ficheiros a meio);
+// concluido = bytes dos ficheiros já acabados (o resto que falta lê-se com contar()).
 export async function enviar(raiz, { sinal, progresso } = {}) {
-  const [docs, fich] = await Promise.all([BD().todosPorIndice('docs', 'pendente', 1), BD().todosPorIndice('ficheiros', 'pendente', 1)]);
-  if (!docs.length && !fich.length) return { registos: 0, ficheiros: 0, apagados: 0 };
-  const tarefas = [
-    ...docs.map(d => ({ tipo: 'doc', r: d, n: d.apagado ? 100 : JSON.stringify(d.dados).length })),
-    ...fich.map(f => ({ tipo: 'fich', r: f, n: f.apagado ? 100 : f.tamanho || 0 })),
-  ];
-  const total = tarefas.reduce((s, t) => s + t.n, 0);
-  let feito = 0;
+  let concluido = 0;
   const parcial = new Map();
-  const relatar = app => progresso?.(app, feito + [...parcial.values()].reduce((s, x) => s + x, 0), total);
+  const relatar = app => progresso?.(app, concluido + [...parcial.values()].reduce((s, x) => s + x, 0), concluido);
 
   // pastas no Drive (encontra ou cria; uma vez por sessão)
   const pastas = new Map();
@@ -120,24 +115,32 @@ export async function enviar(raiz, { sinal, progresso } = {}) {
           sinal, progresso: n => { parcial.set(t, n); relatar(r.app); },
         });
       }
-      parcial.delete(t);
       await marcar('ficheiros', [r.app, r.id], r.mod || r.criado, id, false);
+      parcial.delete(t);
       res.ficheiros++;
     }
-    feito += t.n;
+    concluido += t.n;
     relatar(r.app);
   }
 
-  // até PARALELO envios ao mesmo tempo; o primeiro erro para tudo
-  let i = 0, falha = null;
-  async function trabalhador() {
-    while (!falha && i < tarefas.length) {
-      if (sinal?.aborted) { const e = new Error('Cancelado.'); e.code = 'cancelado'; throw e; }
-      const t = tarefas[i++];
-      try { await umaTarefa(t); } catch (e) { falha = falha || e; }
+  // rondas: em cada uma, até PARALELO envios ao mesmo tempo; o primeiro erro para tudo
+  for (let ronda = 0; ronda < 50; ronda++) {
+    const [docs, fich] = await Promise.all([BD().todosPorIndice('docs', 'pendente', 1), BD().todosPorIndice('ficheiros', 'pendente', 1)]);
+    const tarefas = [
+      ...docs.map(d => ({ tipo: 'doc', r: d, n: d.apagado ? 100 : JSON.stringify(d.dados).length })),
+      ...fich.map(f => ({ tipo: 'fich', r: f, n: f.apagado ? 100 : f.tamanho || 0 })),
+    ];
+    if (!tarefas.length) break;
+    let i = 0, falha = null;
+    async function trabalhador() {
+      while (!falha && i < tarefas.length) {
+        if (sinal?.aborted) { falha = falha || Object.assign(new Error('Cancelado.'), { code: 'cancelado' }); break; }
+        const t = tarefas[i++];
+        try { await umaTarefa(t); } catch (e) { falha = falha || e; }
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(PARALELO, tarefas.length) }, trabalhador));
+    if (falha) { falha.parcial = res; throw falha; }
   }
-  await Promise.all(Array.from({ length: Math.min(PARALELO, tarefas.length) }, trabalhador));
-  if (falha) { falha.parcial = res; throw falha; }
   return res;
 }
