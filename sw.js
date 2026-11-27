@@ -2,12 +2,12 @@
 // Serve o Portal e os programas das apps a partir do aparelho, para funcionar sem internet.
 // IMPORTANTE: sempre que mudares algum ficheiro do Portal, muda VERSAO para os aparelhos receberem a atualização.
 importScripts('/js/gavetabd.js');   // a base de dados das apps (para servir /_blob/)
-const VERSAO = '1.7';
+const VERSAO = '1.8';
 const CASCA = 'casca-' + VERSAO;
 const CASCA_FICHEIROS = [
   '/', '/index.html', '/config.js', '/manifest.webmanifest', '/css/portal.css',
   '/js/main.js', '/js/armazem.js', '/js/cofre.js', '/js/drive.js', '/js/apps.js',
-  '/js/dados.js', '/js/gavetabd.js', '/js/gaveta.js',
+  '/js/dados.js', '/js/sinc.js', '/js/gavetabd.js', '/js/gaveta.js',
   '/vendor/jszip.min.js',
   '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png',
 ];
@@ -135,6 +135,19 @@ async function appDoPedido(e) {
   return app;
 }
 
+// Pede à janela do Portal (que tem o acesso ao Drive) o conteúdo de um ficheiro
+async function pedirAoPortal(f) {
+  const janelas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const portal = janelas.find(c => { try { return !new URL(c.url).pathname.startsWith('/a/'); } catch (e) { return false; } });
+  if (!portal) return null;
+  return new Promise(res => {
+    const ch = new MessageChannel();
+    const t = setTimeout(() => res(null), 120000);
+    ch.port1.onmessage = e => { clearTimeout(t); res(e.data || null); };
+    portal.postMessage({ tipo: 'blob', app: f.app, id: f.id, driveId: f.driveId, nome: f.nome, tamanho: f.tamanho }, [ch.port2]);
+  });
+}
+
 // Ficheiros das apps (assets), servidos a partir deste aparelho, também sem internet
 async function servirBlob(e, url) {
   const id = decodeURIComponent(url.pathname.slice('/_blob/'.length).split('/')[0]);
@@ -142,10 +155,17 @@ async function servirBlob(e, url) {
   let f = null;
   try {
     const l = await GavetaBD.todosPorIndice('ficheiros', 'id', id);
-    f = l.find(x => !x.apagado && x.blob && (!app || x.app === app)) || null;
+    f = l.find(x => !x.apagado && (x.blob || x.driveId) && (!app || x.app === app)) || null;
   } catch (x) {}
   if (!f) return pagina('Ficheiro não encontrado', 'Este ficheiro não está neste aparelho.');
-  const blob = f.blob, tipo = f.tipo || blob.type || 'application/octet-stream';
+  let blob = f.blob;
+  if (!blob) {
+    // fase 3: o ficheiro está no Drive (veio de outro aparelho, ou o browser não guarda): o Portal vai buscá-lo
+    const r = await pedirAoPortal(f);
+    if (!r?.blob) return pagina('Ficheiro no Drive', r?.erro === 'sem_token' ? 'O acesso ao Drive expirou: volta ao Portal e toca em "Ligar ao Drive".' : 'Este ficheiro está no Google Drive e não foi possível trazê-lo agora (é preciso internet).', 503);
+    blob = r.blob;
+  }
+  const tipo = f.tipo || blob.type || 'application/octet-stream';
   const base = { 'Content-Type': tipo, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' };
   const rg = (e.request.headers.get('Range') || '').match(/^bytes=(\d*)-(\d*)$/);
   if (rg && (rg[1] || rg[2])) {

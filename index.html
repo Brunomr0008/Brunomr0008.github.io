@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f4f4b">
 <meta name="color-scheme" content="light dark">
-<meta name="portal-versao" content="1.7">
+<meta name="portal-versao" content="1.8">
 <script>try{document.documentElement.dataset.tema=localStorage.getItem('portal:tema')||'original'}catch(e){document.documentElement.dataset.tema='original'}</script>
 <title>Portal</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -34,11 +34,11 @@
 <div id="precisa-atualizar" class="a-atualizar" hidden>
   <div class="painel estreito">
     <img src="/icons/favicon.svg" alt="" class="logo">
-    <h2>É preciso atualizar o Portal</h2>
-    <p>Há uma versão nova (<b id="pa-versao"></b>). Enquanto não atualizares, as apps, a Documentação e os envios para o Drive ficam parados. Os teus dados estão guardados.</p>
+    <h2>Há uma versão nova do Portal<b id="pa-versao"></b></h2>
+    <p>Para a instalar, o Portal volta ao ecrã principal. Até lá, as apps, a Documentação e os envios para o Drive ficam parados. Os teus dados estão guardados.</p>
     <div class="barra-ind"><div></div></div>
-    <p class="suave" id="pa-estado">A instalar a versão nova…</p>
-    <div class="linha-btns centro"><button class="btn primario" type="button" id="pa-atualizar">Atualizar agora</button></div>
+    <p class="suave" id="pa-estado"></p>
+    <div class="linha-btns centro"><button class="btn primario" type="button" id="pa-atualizar">Recarregar já</button></div>
   </div>
 </div>
 
@@ -242,12 +242,19 @@
 
       <section data-sec="transf">
         <h3>Transferências</h3>
-        <p class="suave curto">O que está a ir para o Drive. O que pausares ou cancelares fica guardado neste aparelho.</p>
+        <p class="suave curto">O que vai para o Drive (↑) e o que vem de lá (↓). O que pausares ou cancelares fica guardado neste aparelho.</p>
         <div id="t-atual" class="transf-atual"></div>
         <ul id="t-fila" class="lista-simples"></ul>
         <div class="linha-btns">
           <button class="btn" type="button" id="t-pausar">⏸ Pausar envios</button>
           <button class="btn primario" type="button" id="t-retomar" hidden>▶ Retomar envios</button>
+        </div>
+        <h3>Histórico das transferências</h3>
+        <p class="suave curto" id="t-hist-total"></p>
+        <ul id="t-hist" class="historico transf"></ul>
+        <div class="linha-btns">
+          <button class="btn" type="button" id="t-hist-copiar">Copiar</button>
+          <button class="btn texto perigo" type="button" id="t-hist-limpar">Apagar este histórico</button>
         </div>
       </section>
 
@@ -321,6 +328,18 @@
     </div>
   </div>
 </dialog>
+
+<!-- ============ Browser: à espera dos dados do Drive (fase 3) ============ -->
+<div id="espera-dados" class="a-atualizar" hidden>
+  <div class="painel estreito">
+    <img src="/icons/favicon.svg" alt="" class="logo">
+    <h2>A receber os dados do Drive…</h2>
+    <p class="suave">No browser, os dados das apps não ficam guardados: vêm do Drive em cada sessão. Os PDFs só vêm quando os abres.</p>
+    <div class="barra-ind"><div></div></div>
+    <p class="suave" id="espera-txt"></p>
+    <div class="linha-btns centro"><button class="btn texto" type="button" id="espera-cancelar">Cancelar</button></div>
+  </div>
+</div>
 
 <!-- ============ Documentação (no Drive, atrás do PIN) ============ -->
 <dialog id="dlg-docs" class="dialogo def">

@@ -1,4 +1,4 @@
-# Portal — LEIA-ME (versão 1.7)
+# Portal — LEIA-ME (versão 1.8)
 
 > Guia completo e ilustrado: os PDFs "Portal - Guias". Este ficheiro é o resumo técnico.
 
@@ -8,6 +8,7 @@ O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tud
 
 | Versão | Data | Título | O que mudou |
 |---|---|---|---|
+| 1.8 | 27/11/2026 | Phase 3: sync between devices | Fase 3: recebe do Drive só o que mudou noutros aparelhos (ao entrar, de 30 em 30 s, "Sincronizar agora"); as apps abertas veem as mudanças logo. Conflitos: fica o mais recente, com aviso. Browser: os dados vêm do Drive em cada sessão e os PDFs quando os abres; não ficam guardados. Instalado: guarda tudo. Aviso ao sair de uma app com alterações por enviar. Histórico das transferências. Versão nova: verifica a cada ação e de 5 em 5 min; aviso de 5 s, bloqueia e volta ao ecrã principal. Documentação: pasta "Guias - últimas versões". |
 | 1.7 | 27/11/2026 | Fast update checks, tidy guides | O Portal pergunta ao GitHub de minuto a minuto (e antes de cada envio para o Drive) se há versão nova; quando há, bloqueia e recarrega sozinho para a instalar, sem enviar nada com a versão antiga. Documentação: barra de progresso visível; na pasta Guias fica só a versão mais recente de cada guia (as anteriores vão para "Versões antigas"); aceita guias soltos, numa pasta ou num .zip; não envia outra vez um guia que já lá está. Transferências: mostra quanto falta enviar no total. |
 | 1.6 | 27/11/2026 | Strict updates, Documentation editing | Com internet e uma versão nova no GitHub, já não há "Continuar sem atualizar": entras com o PIN, mas as apps, a Documentação, as definições e os envios ficam parados até a versão nova estar instalada. Documentação: apagar (lixo do Drive, 30 dias), mudar o nome e juntar pastas inteiras. Transferências: sem linhas repetidas; o total conta tudo o que falta; velocidade dos últimos 20 s; os dados vão de seguida, sem esperar pela volta seguinte. |
 | 1.5 | 27/11/2026 | App data drawer, Documentation, updates | Fase 2: as apps passam a guardar dados no Portal (a "gaveta" `window.claude`: base de dados, ficheiros como PDFs e descarregar), tal como no Claude, sem mudar nada nas apps. Os dados ficam no aparelho, funcionam sem internet e vão sozinhos para o Drive, só o que mudou (`apps/<app>/dados/`). Cada app tem o seu próprio `localStorage`. Nova secção Documentação, protegida pelo PIN, no Drive: cada versão nova do Portal arquiva-se lá sozinha. Com internet, um aparelho com uma versão antiga do Portal fica bloqueado até instalar a mais recente (`versao.json`). |
@@ -33,7 +34,9 @@ O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tud
 - a secção **Documentação** (ícone de documento no topo), atrás do PIN: juntar ficheiros e pastas, mudar o nome, apagar (desde a 1.6);
 - com internet, o Portal não deixa usar uma versão antiga: entras com o PIN, mas o resto fica parado até atualizar (desde a 1.6, sem opção de continuar).
 
-**Ainda não funciona:** os dados passarem de um aparelho para outro (fase 3) e as apps aparecerem nos outros aparelhos (fase 4). No browser sem instalar, por agora os dados também ficam guardados no aparelho. Na fase 3, o browser passa a ir buscá-los ao Drive sempre que precisa (com internet) e deixa de os guardar; só o programa das apps fica guardado.
+**Na fase 3 (versão 1.8) passou a funcionar:** os dados passam de um aparelho para os outros pelo Drive (só as diferenças), com conflitos resolvidos (fica o mais recente) e o histórico das transferências.
+
+**Ainda não funciona:** as apps aparecerem sozinhas nos outros aparelhos (fase 4); por agora, junta a app à mão no outro aparelho e os dados vêm do Drive. No browser sem instalar, os dados vêm do Drive em cada sessão e os PDFs quando os abres; não ficam guardados (só o que ainda não foi enviado e o programa das apps).
 
 ---
 
@@ -125,18 +128,18 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | Separação entre apps | **Por pasta:** cada app só recebe da gaveta a sua própria pasta `apps/<id>/`. O Portal cria e escolhe a pasta sozinho. Um único repositório. |
 | PIN | **Um PIN único** para todos os aparelhos. No Drive fica só o "resumo" (`seguranca.json`), não o PIN. Mudar o PIN num aparelho muda-o em todos. |
 | Acesso ao Google | Sem servidor. A autorização dura 1 hora; quando expira, um toque em **Ligar ao Drive** renova-a. |
-| Sincronização (fase 3) | Verifica se há novidades de 30 em 30 s (com o Portal aberto e com internet) e quando abres ou fazes refresh a uma app. Só transfere o que mudou. Envia as tuas alterações poucos segundos depois de as fazeres. |
+| Sincronização (feita na 1.8) | Primeiro recebe, depois envia: ao entrar, de 30 em 30 s, ao voltar à janela e em "Sincronizar agora" (toque no estado). Só as diferenças (lista de alterações do Drive). Conflitos: fica o mais recente, com aviso no Histórico. Tudo fica no Histórico das transferências. |
 | Apps novas ou atualizadas noutros aparelhos (fase 4) | O Portal **pergunta sempre** antes de transferir. |
 | Cifra (fase 6) | **Todos os dados** das apps ficam cifrados no Drive (registos e ficheiros, PDFs incluídos). Os programas ficam sem cifra. |
 | Recuperação (fase 6) | Telemóvel-chave; código de recuperação impresso; email de recuperação escondido como último recurso. Esquecer o PIN nunca apaga dados. |
 | Gaveta das apps (fase 2) | O Portal imita `window.claude.use("db" \| "assets" \| "downloads")`. Os dados ficam no aparelho e vão para o Drive, só o que mudou, poucos segundos depois. Cada app só vê os seus dados e o seu `localStorage`. |
-| Versão do Portal desatualizada | Com internet, o Portal compara-se com o `versao.json` do GitHub de minuto a minuto e antes de cada envio para o Drive (1.7); quando há versão nova, recarrega sozinho para a instalar. Se houver uma mais recente: o PIN deixa entrar, mas as apps, a Documentação, as definições e os envios ficam parados até a versão nova estar instalada. Não há "continuar sem atualizar". Sem internet, entra normalmente. |
+| Versão do Portal desatualizada | Com internet, o Portal compara-se com o `versao.json` do GitHub a cada ação (abrir uma app, a Documentação, as definições, enviar para o Drive) e de 5 em 5 minutos (1.8). Quando há versão nova: aviso de 5 segundos, bloqueia e volta ao ecrã principal com a versão nova. Se houver uma mais recente: o PIN deixa entrar, mas as apps, a Documentação, as definições e os envios ficam parados até a versão nova estar instalada. Não há "continuar sem atualizar". Sem internet, entra normalmente. |
 | Juntar e atualizar | Dois botões separados. "Juntar app" é só para apps novas: se a app já existir, avisa e manda-te para "⋯ → Atualizar". "Atualizar" avisa se o ficheiro não parecer da mesma app (tu confirmas). |
 | Versões das apps | Ficam todas guardadas no Drive, cada uma na sua pasta `versoes/vN/`. |
 | Remover uma app | Possível, com aviso e aprovação no telemóvel principal (fase 5). |
 | Versão de cada app | Cada aparelho escolhe a versão ativa de cada app (normalmente a mais recente). |
 | Versão do Portal | Uma só (a do GitHub). Para voltar atrás, envia-se outra vez a versão antiga para o GitHub. Não se escolhe a versão do Portal. As versões antigas ficam arquivadas na secção Documentação (fase 2). |
-| Documentação (feito na 1.5–1.6) | Secção no Portal, atrás do PIN, guardada no Drive (`Portal/documentacao/`): Portal (versões), Guias, Regras, Decisões. Juntar ficheiros e pastas, mudar o nome, apagar (vai para o lixo do Drive, 30 dias). As 4 pastas principais não se apagam. Na pasta Guias, os ficheiros "N - Título (vX).pdf" arrumam-se sozinhos: fica a versão mais recente de cada guia; as anteriores vão para "Versões antigas" (1.7). Arquivo automático: cada versão nova do Portal guarda-se sozinha em Portal (versões). |
+| Documentação (feito na 1.5–1.6) | Secção no Portal, atrás do PIN, guardada no Drive (`Portal/documentacao/`): Portal (versões), Guias, Regras, Decisões. Juntar ficheiros e pastas, mudar o nome, apagar (vai para o lixo do Drive, 30 dias). As 4 pastas principais não se apagam. Na pasta Guias, as pastas que juntas ficam como estão; o Portal mantém a pasta "Guias - últimas versões" com uma cópia (feita no próprio Drive) da versão mais recente de cada guia "N - Título (vX).pdf" (1.8). Arquivo automático: cada versão nova do Portal guarda-se sozinha em Portal (versões). |
 | Dados de cada app (feito na 1.5) | Cada app tem o seu próprio `localStorage`, separado das outras. |
 | Regras para apps | Ficam dentro do Portal, guardadas no teu Drive (não no GitHub), escondidas atrás de uma palavra-passe, para ver e descarregar (fase 2). |
 | Temas | Original, Claro e Escuro, em Definições → Aspeto (feito na 1.2). |
@@ -166,6 +169,7 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | `js/gaveta.js` | a gaveta `window.claude` que cada app recebe (fase 2) |
 | `js/gavetabd.js` | a base de dados local onde as apps guardam os dados |
 | `js/dados.js` | envia os dados das apps para o Drive |
+| `js/sinc.js` | recebe do Drive os dados mudados noutros aparelhos (fase 3) |
 | `versao.json` | a versão publicada (o Portal compara-se com ela para saber se está desatualizado) |
 | `js/armazem.js` | base de dados local (IndexedDB) |
 | `vendor/jszip.min.js` | abrir ficheiros .zip |

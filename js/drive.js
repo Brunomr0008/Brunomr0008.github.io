@@ -1,6 +1,6 @@
 // drive.js — Google Drive (só a permissão drive.file: o Portal vê apenas o que ele próprio cria)
 
-export const V = '1.5';
+export const V = '1.8';
 export const ESCOPO = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
@@ -139,9 +139,10 @@ function enviarXHR(metodo, url, cabecalhos, corpo, { progresso, sinal } = {}) {
   });
 }
 
-export async function criarFicheiro(nome, pai, blob, tipo, { progresso, sinal } = {}) {
+export async function criarFicheiro(nome, pai, blob, tipo, { progresso, sinal, props } = {}) {
   if (!temToken()) throw erro('sem_token', 'É preciso ligar ao Drive.');
   const meta = { name: nome, parents: [pai], mimeType: tipo || blob.type || 'application/octet-stream' };
+  if (props) meta.appProperties = props;   // etiquetas invisíveis (ex.: id do registo), para os outros aparelhos saberem o que é
   if (blob.size > LIMITE_SIMPLES) {
     // envio "resumable": um pedido para abrir a sessão, outro com o conteúdo
     const r = await pedido(`${UP}/files?uploadType=resumable&fields=id`, {
@@ -168,7 +169,7 @@ export async function listar(pai) {
   const q = `'${pai}' in parents and trashed=false`;
   let todos = [], pagina = '';
   do {
-    const r = await json(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size,md5Checksum)&pageSize=1000&spaces=drive${pagina ? '&pageToken=' + pagina : ''}`);
+    const r = await json(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size,md5Checksum,appProperties,createdTime,modifiedTime)&pageSize=1000&spaces=drive${pagina ? '&pageToken=' + pagina : ''}`);
     todos = todos.concat(r.files || []);
     pagina = r.nextPageToken || '';
   } while (pagina);
@@ -181,6 +182,25 @@ export async function mudarConteudo(id, blob, tipo) {
   });
 }
 
+// Etiquetas invisíveis num ficheiro (appProperties)
+export async function etiquetar(id, props) {
+  await pedido(`${API}/files/${id}?fields=id`, { method: 'PATCH', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: JSON.stringify({ appProperties: props }) });
+}
+// Alterações no Drive (só as dos ficheiros do Portal), para receber só o que mudou
+export async function inicioMudancas() {
+  return (await json(`${API}/changes/startPageToken`)).startPageToken;
+}
+export async function mudancas(marca) {
+  let lista = [], pagina = marca, nova = null;
+  const campos = 'nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,parents,trashed,size,md5Checksum,appProperties,createdTime,modifiedTime))';
+  while (pagina) {
+    const r = await json(`${API}/changes?pageToken=${encodeURIComponent(pagina)}&includeRemoved=true&spaces=drive&pageSize=1000&fields=${encodeURIComponent(campos)}`);
+    lista = lista.concat(r.changes || []);
+    if (r.newStartPageToken) nova = r.newStartPageToken;
+    pagina = r.nextPageToken || null;
+  }
+  return { lista, marca: nova || marca };
+}
 export async function lerJSON(id) { return json(`${API}/files/${id}?alt=media`); }
 export async function lerBlob(id) { return (await pedido(`${API}/files/${id}?alt=media`)).blob(); }
 

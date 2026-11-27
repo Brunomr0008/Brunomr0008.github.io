@@ -2,7 +2,7 @@
 // No Drive:  Portal/apps/<id>/dados/registos/<coleção>/<id>.json   e   Portal/apps/<id>/dados/ficheiros/<nome> (<id>).<ext>
 import * as Drive from './drive.js';
 
-export const V = '1.6';
+export const V = '1.8';
 const BD = () => self.GavetaBD;
 const PARALELO = 4;
 
@@ -42,7 +42,7 @@ function nomeNoDrive(f) {
 }
 
 // Atualiza um registo depois de enviado; só tira o "pendente" se não mudou entretanto
-async function marcar(loja, chave, ver, driveId, apagar) {
+async function marcar(loja, chave, ver, driveId, apagar, md5) {
   const d = await BD().abrir();
   const t = d.transaction(loja, 'readwrite');
   const s = t.objectStore(loja);
@@ -50,7 +50,7 @@ async function marcar(loja, chave, ver, driveId, apagar) {
   if (r) {
     const igual = loja === 'docs' ? r.ver === ver : (r.mod || r.criado) === ver;
     if (apagar && igual) s.delete(chave);
-    else { r.driveId = apagar ? null : driveId; if (igual) r.pendente = 0; s.put(r); }
+    else { r.driveId = apagar ? null : driveId; if (md5 && igual) r.md5 = md5; if (igual) { r.pendente = 0; if (loja === 'ficheiros') r.etiq = 1; } s.put(r); }
   }
   await BD().fim(t);
 }
@@ -58,7 +58,7 @@ async function marcar(loja, chave, ver, driveId, apagar) {
 // Envia tudo o que está pendente, em rondas, até não sobrar nada (o que for chegando entretanto também vai).
 // progresso(app, enviado, concluido): enviado = bytes já enviados nesta sessão (com os ficheiros a meio);
 // concluido = bytes dos ficheiros já acabados (o resto que falta lê-se com contar()).
-export async function enviar(raiz, { sinal, progresso } = {}) {
+export async function enviar(raiz, { sinal, progresso, aparelho } = {}) {
   let concluido = 0;
   const parcial = new Map();
   const relatar = app => progresso?.(app, concluido + [...parcial.values()].reduce((s, x) => s + x, 0), concluido);
@@ -101,18 +101,22 @@ export async function enviar(raiz, { sinal, progresso } = {}) {
       await marcar(t.tipo === 'doc' ? 'docs' : 'ficheiros', t.tipo === 'doc' ? [r.app, r.col, r.id] : [r.app, r.id], t.tipo === 'doc' ? r.ver : (r.mod || r.criado), null, true);
       res.apagados++;
     } else if (t.tipo === 'doc') {
-      const blob = new Blob([JSON.stringify({ id: r.id, colecao: r.col, dados: r.dados, alteradoEm: new Date(r.mod).toISOString() }, null, 1)], { type: 'application/json' });
+      // "mod" é a hora da alteração: serve para resolver conflitos entre aparelhos (fica a mais recente)
+      const texto = JSON.stringify({ id: r.id, colecao: r.col, dados: r.dados, mod: r.mod, alteradoEm: new Date(r.mod).toISOString(), aparelho: aparelho || null }, null, 1);
+      const bytes = new TextEncoder().encode(texto);
+      const md5 = Drive.md5(bytes.buffer);
+      const blob = new Blob([bytes], { type: 'application/json' });
       let id = r.driveId;
       if (id) { try { await Drive.mudarConteudo(id, blob, 'application/json'); } catch (e) { if (e.code === 'nao_existe') id = null; else throw e; } }
-      if (!id) id = await Drive.criarFicheiro(r.id + '.json', await pastaCol(r.app, r.col), blob, 'application/json', { sinal });
-      await marcar('docs', [r.app, r.col, r.id], r.ver, id, false);
+      if (!id) id = await Drive.criarFicheiro(r.id + '.json', await pastaCol(r.app, r.col), blob, 'application/json', { sinal, props: { portal: 'registo', app: r.app, col: r.col, pid: r.id } });
+      await marcar('docs', [r.app, r.col, r.id], r.ver, id, false, md5);
       res.registos++;
     } else {
       let id = r.driveId;
       if (!id) {
         const nome = r.nome ? r : { ...r, nome: await nomeDoRegisto(r.app, r.id) };
         id = await Drive.criarFicheiro(nomeNoDrive(nome), await pastaFich(r.app), r.blob, r.tipo, {
-          sinal, progresso: n => { parcial.set(t, n); relatar(r.app); },
+          sinal, props: { portal: 'ficheiro', app: r.app, pid: r.id }, progresso: n => { parcial.set(t, n); relatar(r.app); },
         });
       }
       await marcar('ficheiros', [r.app, r.id], r.mod || r.criado, id, false);
@@ -142,5 +146,20 @@ export async function enviar(raiz, { sinal, progresso } = {}) {
     await Promise.all(Array.from({ length: Math.min(PARALELO, tarefas.length) }, trabalhador));
     if (falha) { falha.parcial = res; throw falha; }
   }
+  // ficheiros enviados por versões antigas (sem etiqueta): põe-lhes a etiqueta com o id, para os outros aparelhos os reconhecerem
+  const semEtiqueta = (await BD().todosPorIndice('ficheiros', 'pendente', 0)).filter(f => f.driveId && !f.etiq && !f.apagado);
+  for (const f of semEtiqueta) {
+    if (sinal?.aborted) break;
+    try { await Drive.etiquetar(f.driveId, { portal: 'ficheiro', app: f.app, pid: f.id }); } catch (e) { if (e.code !== 'nao_existe') break; }
+    await marcarEtiqueta(f.app, f.id);
+  }
   return res;
+}
+async function marcarEtiqueta(app, id) {
+  const d = await BD().abrir();
+  const t = d.transaction('ficheiros', 'readwrite');
+  const s = t.objectStore('ficheiros');
+  const r = await BD().req(s.get([app, id]));
+  if (r) { r.etiq = 1; s.put(r); }
+  await BD().fim(t);
 }
