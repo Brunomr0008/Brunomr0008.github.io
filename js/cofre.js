@@ -2,7 +2,7 @@
 // Guarda-se só um "resumo" (PBKDF2-SHA256), nunca o PIN.
 import { conf } from './armazem.js';
 
-export const V = '1.3';
+export const V = '1.4';
 const ITERACOES = 310000;
 const TENTATIVAS_LIVRES = 5;
 
@@ -57,6 +57,40 @@ export async function verificar(segredo) {
   }
   f.n++;
   // Depois de 5 tentativas erradas: espera de 30 s, que duplica a cada nova falha (máx. 1 hora)
+  if (f.n >= TENTATIVAS_LIVRES) f.ate = agora + Math.min(3600, 30 * 2 ** (f.n - TENTATIVAS_LIVRES)) * 1000;
+  await conf.set('falhas', f);
+  return { ok: false, espera: f.ate > agora ? Math.ceil((f.ate - agora) / 1000) : 0, restam: Math.max(0, TENTATIVAS_LIVRES - f.n) };
+}
+
+/* ---------- PIN único: o mesmo "resumo" do PIN guardado no Drive (seguranca.json) ---------- */
+const b64 = u => btoa(String.fromCharCode(...u));
+const deB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+// Para enviar para o Drive (nunca o PIN, só o resumo)
+export async function exportar() {
+  const c = await conf.get('cofre'); if (!c) return null;
+  return { formato: 1, tipo: c.tipo, sal: b64(c.sal), resumo: b64(c.resumo), iter: c.iter, comprimento: c.comprimento || 0, mudadoEm: c.em };
+}
+// Estado da sincronização do PIN neste aparelho
+export async function estadoSinc() {
+  const c = await conf.get('cofre'); return c ? { em: c.em, sinc: c.sinc || 0 } : null;
+}
+export async function marcarSinc(mudadoEm) {
+  const c = await conf.get('cofre'); if (!c) return;
+  c.sinc = mudadoEm; await conf.set('cofre', c);
+}
+// Passa a usar o PIN que veio do Drive
+export async function importar(r) {
+  await conf.set('cofre', { tipo: r.tipo, sal: deB64(r.sal), resumo: deB64(r.resumo), iter: r.iter, em: r.mudadoEm, sinc: r.mudadoEm, comprimento: r.comprimento || 0 });
+}
+// Num aparelho novo: confere o PIN escrito com o resumo que está no Drive (com a mesma pausa depois de 5 erros)
+export async function verificarRemoto(segredo, r) {
+  const f = (await conf.get('falhas')) || { n: 0, ate: 0 };
+  const agora = Date.now();
+  if (f.ate > agora) return { ok: false, espera: Math.ceil((f.ate - agora) / 1000) };
+  const x = await derivar(segredo, deB64(r.sal), r.iter);
+  if (iguais(x, deB64(r.resumo))) { await conf.set('falhas', { n: 0, ate: 0 }); return { ok: true }; }
+  f.n++;
   if (f.n >= TENTATIVAS_LIVRES) f.ate = agora + Math.min(3600, 30 * 2 ** (f.n - TENTATIVAS_LIVRES)) * 1000;
   await conf.set('falhas', f);
   return { ok: false, espera: f.ate > agora ? Math.ceil((f.ate - agora) / 1000) : 0, restam: Math.max(0, TENTATIVAS_LIVRES - f.n) };

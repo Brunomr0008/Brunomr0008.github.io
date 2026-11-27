@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal</title>
+<script>
+// Endereços /a/<app>/… só existem dentro do Portal. Abertos de fora, levam ao Portal (que pede o PIN).
+(function () {
+  var m = location.pathname.match(/^\/a\/([^/]+)/);
+  location.replace(m ? '/#app=' + m[1] : '/');
+})();
+</script>
+</head>
+<body style="font-family:system-ui,sans-serif;padding:2rem">
+<p>A abrir o <a href="/">Portal</a>…</p>
+</body>
+</html>

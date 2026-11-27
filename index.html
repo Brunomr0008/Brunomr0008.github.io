@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f4f4b">
 <meta name="color-scheme" content="light dark">
-<meta name="portal-versao" content="1.3">
+<meta name="portal-versao" content="1.4">
 <script>try{document.documentElement.dataset.tema=localStorage.getItem('portal:tema')||'original'}catch(e){document.documentElement.dataset.tema='original'}</script>
 <title>Portal</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -35,13 +35,28 @@
   <img src="/icons/favicon.svg" alt="" class="logo-grande">
 </section>
 
-<!-- ============ Primeira configuração ============ -->
+<!-- ============ Primeira vez neste aparelho ============ -->
 <section id="ecra-config" class="ecra centro" hidden>
   <div class="painel">
     <img src="/icons/favicon.svg" alt="" class="logo">
-    <div data-passo="1">
+    <div data-passo="google">
       <h1>Bem-vindo ao Portal</h1>
-      <p class="suave">Primeiro, escolhe como vais desbloquear o Portal neste aparelho.</p>
+      <p class="suave">Primeira vez neste aparelho (ou neste browser). Entra com a tua conta Google: só a tua conta tem acesso.</p>
+      <p class="erro" id="erro-google"></p>
+      <button class="btn primario largo" id="btn-config-google" type="button">Entrar com Google</button>
+    </div>
+    <div data-passo="entrar" hidden>
+      <h1>PIN do Portal</h1>
+      <p class="suave">Escreve o PIN que já usas no Portal.</p>
+      <form id="form-entrar" autocomplete="off">
+        <input id="pin-entrar" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN ou palavra-passe">
+        <p class="erro" id="erro-entrar"></p>
+        <button class="btn primario largo" type="submit">Entrar</button>
+      </form>
+    </div>
+    <div data-passo="criar" hidden>
+      <h1>Criar o PIN do Portal</h1>
+      <p class="suave">É a primeira vez que o Portal é usado. Este PIN vai servir para todos os teus aparelhos.</p>
       <div class="alternar" role="radiogroup">
         <button type="button" data-tipo="pin" class="ativo">PIN</button>
         <button type="button" data-tipo="senha">Palavra-passe</button>
@@ -55,16 +70,9 @@
         <button class="btn primario largo" type="submit">Continuar</button>
       </form>
     </div>
-    <div data-passo="2" hidden>
-      <h1>Ligar ao Google Drive</h1>
-      <p class="suave">O Portal guarda os programas e os dados das tuas apps numa pasta <b>Portal</b> no teu Drive. Só vê os ficheiros que ele próprio cria.</p>
-      <p class="erro" id="erro-google"></p>
-      <button class="btn primario largo" id="btn-config-google" type="button">Entrar com Google</button>
-      <button class="btn texto largo" id="btn-config-depois" type="button">Fazer isto mais tarde</button>
-    </div>
-    <div data-passo="3" hidden>
+    <div data-passo="pronto" hidden>
       <h1>Pronto</h1>
-      <p class="suave" id="txt-pronto">O Portal está configurado neste aparelho.</p>
+      <p class="suave" id="txt-pronto">O Portal está pronto neste aparelho.</p>
       <button class="btn primario largo" id="btn-config-fim" type="button">Começar</button>
     </div>
   </div>
@@ -194,6 +202,7 @@
 <dialog id="dlg-def" class="dialogo def">
   <div class="def-grelha">
     <nav class="def-nav" id="def-nav">
+      <button type="button" class="voltar-def" id="def-voltar">← Voltar</button>
       <h2>Definições</h2>
       <button type="button" data-sec="drive">Google Drive</button>
       <button type="button" data-sec="transf">Transferências</button>
@@ -204,7 +213,6 @@
       <button type="button" data-sec="sobre">Sobre</button>
     </nav>
     <div class="def-conteudo">
-      <button class="icone-btn fechar-def" type="button" id="def-fechar" aria-label="Fechar">✕</button>
 
       <section data-sec="drive">
         <h3>Google Drive</h3>

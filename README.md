@@ -1,4 +1,4 @@
-# Portal — LEIA-ME (versão 1.3)
+# Portal — LEIA-ME (versão 1.4)
 
 > Guia completo e ilustrado: os PDFs "Portal - Guias". Este ficheiro é o resumo técnico.
 
@@ -8,6 +8,7 @@ O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tud
 
 | Versão | Data | Título | O que mudou |
 |---|---|---|---|
+| 1.4 | 27/11/2026 | Single PIN, version folders, faster sync | PIN único para todos os aparelhos, guardado no Drive só como "resumo" (nunca o PIN). Num aparelho novo entras primeiro com Google e depois escreves o PIN que já usas. Cada versão de uma app fica na sua pasta (`versoes/v1`, `v2`…); a pasta antiga `programa` é arrumada sozinha. Os ficheiros que não mudaram são copiados no próprio Drive em vez de enviados outra vez, e até 3 ficheiros vão ao mesmo tempo. No browser (sem instalar) as apps só abrem com internet. Definições numa janela própria. Corrigido o aviso vermelho sem internet. Um endereço `/a/…` aberto fora do Portal leva ao Portal. |
 | 1.3 | 26/11/2026 | Settings sections, transfers, history | Definições divididas por secções. Histórico de erros, avisos e informações, com filtro por datas, copiar e exportar. Transferências com progresso real, pausar, retomar e cancelar; um envio interrompido continua onde parou. Indicador Online / Sem internet que testa a ligação a sério. Barra "A atualizar o Portal" no ecrã do PIN. Contagem decrescente depois de 5 tentativas erradas. Temas escolhidos com botões; o Escuro passou a preto. Teclado do PIN mais visível. Editar o nome e a descrição das apps. "Juntar app" reconhece uma app que já existe e manda-te para "Atualizar"; "Atualizar" avisa se o ficheiro não parecer da mesma app. |
 | 1.2 | 26/11/2026 | Themes, PIN dots and update checks | Temas; círculos do PIN do tamanho do PIN e entrada automática; a versão nova instala-se antes do PIN; verificação dos ficheiros; registo de erros. |
 | 1.1 | 26/11/2026 | Fix Cancel button in Add app | O botão Cancelar da janela "Juntar app" voltou a fechar a janela. |
@@ -17,7 +18,8 @@ O Portal abre e gere as tuas apps (as que fazes nos chats do Claude). Guarda tud
 - o Portal instala-se como app e funciona sem internet;
 - desbloqueio com PIN ou palavra-passe;
 - entrar com Google e criar a pasta `Portal/` no Drive;
-- juntar e atualizar apps (pasta, .zip ou só o `index.html`), com envio para o Drive e as versões antigas em `versoes/`;
+- um PIN único para todos os aparelhos (desde a 1.4);
+- juntar e atualizar apps (pasta, .zip ou só o `index.html`), com envio para o Drive, cada versão na sua pasta `versoes/vN/`;
 - abrir as apps dentro do Portal.
 
 **Ainda não funciona:** as apps guardarem dados. Isso é a gaveta `window.claude` (fase 2). Até lá, o Estúdio abre mas esquece o que fizeres ao fechar. **Não importes ainda a tua Cópia (.zip).**
@@ -81,17 +83,17 @@ Se o Google avisar que "a app não foi verificada", é normal, porque a app é t
 ## E. Como testar a fase 1
 
 1. **Primeiro arranque (PC):** define o PIN e entra com Google (ou "Fazer isto mais tarde").
-2. **Drive:** se ligaste, abre o Drive. Tem de lá estar `Portal/` com `portal.json`, `apps/` e `aparelhos/`.
+2. **Drive:** se ligaste, abre o Drive. Tem de lá estar `Portal/` com `portal.json`, `seguranca.json`, `apps/` e `aparelhos/`.
 3. **Juntar o Estúdio:** **+ Juntar app** → **Escolher pasta** (ou **.zip ou index.html**) → **Juntar**. O nome vem sozinho.
-4. **Estado no topo:** **A sincronizar…** e depois **✓ Tudo na nuvem**. No Drive aparece `apps/estudio-de-trompete/` com `app.json`, `programa/` e `dados/`.
+4. **Estado no topo:** **A sincronizar…** e depois **✓ Tudo na nuvem**. No Drive aparece `apps/estudio-de-trompete/` com `app.json`, `versoes/v1/` e `dados/`.
 5. **Abrir:** toca no cartão. O Estúdio abre e **← Início** volta.
 6. **Instalar:** botão **Instalar** no topo do Portal (ou o ícone na barra de endereço).
-7. **Sem internet:** desliga o Wi-Fi → abre o Portal → PIN → abre o Estúdio. Tem de abrir.
+7. **Sem internet:** desliga o Wi-Fi → abre o Portal **instalado** → PIN → abre o Estúdio. Tem de abrir. No browser (sem instalar) não abre: aparece um aviso.
 8. **Por enviar:** sem internet, junta uma app qualquer. O estado mostra **↑ 1**. Liga o Wi-Fi: envia-se sozinha.
-9. **Atualizar:** **⋯** no cartão → **Atualizar**. O cartão passa a "versão 2" e, no Drive, a versão 1 vai para `versoes/v1/`.
+9. **Atualizar:** **⋯** no cartão → **Atualizar**. O cartão passa a "versão 2" e, no Drive, aparece `versoes/v2/` ao lado de `versoes/v1/`. Enquanto envia, a pasta chama-se `v2 (a enviar)`.
 10. **PIN:** um PIN errado é recusado; depois de 5 erros, o Portal obriga a esperar.
-11. **Atalho:** escreve `https://<…>.github.io/a/estudio-de-trompete/index.html` na barra de endereço. Tem de ir parar ao ecrã do PIN.
-12. **Telemóvel:** abre o endereço no Chrome → PIN → **⋮ → Instalar app**. As apps do PC ainda não aparecem aqui (chegam na fase 4).
+11. **Atalho:** escreve `https://<…>.github.io/a/estudio-de-trompete/` na barra de endereço. Num aparelho onde a app ainda não existe, vai parar ao Portal (ecrã do PIN). Onde existe, abre-a depois do PIN.
+12. **Telemóvel:** abre o endereço no Chrome → **Entrar com Google** → escreve **o mesmo PIN do PC** → **⋮ → Instalar app**. As apps do PC ainda não aparecem aqui (chegam na fase 4).
 
 Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 
@@ -101,26 +103,30 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 |---|---|
 | Onde fica o Portal | GitHub Pages, repositório `<utilizador>.github.io`. Só o Portal vai para lá. |
 | Separação entre apps | **Por pasta:** cada app só recebe da gaveta a sua própria pasta `apps/<id>/`. O Portal cria e escolhe a pasta sozinho. Um único repositório. |
+| PIN | **Um PIN único** para todos os aparelhos. No Drive fica só o "resumo" (`seguranca.json`), não o PIN. Mudar o PIN num aparelho muda-o em todos. |
 | Acesso ao Google | Sem servidor. A autorização dura 1 hora; quando expira, um toque em **Ligar ao Drive** renova-a. |
 | Sincronização (fase 3) | Verifica se há novidades de 30 em 30 s (com o Portal aberto e com internet) e quando abres ou fazes refresh a uma app. Só transfere o que mudou. Envia as tuas alterações poucos segundos depois de as fazeres. |
 | Apps novas ou atualizadas noutros aparelhos (fase 4) | O Portal **pergunta sempre** antes de transferir. |
 | Cifra (fase 6) | **Todos os dados** das apps ficam cifrados no Drive (registos e ficheiros, PDFs incluídos). Os programas ficam sem cifra. |
 | Recuperação (fase 6) | Telemóvel-chave; código de recuperação impresso; email de recuperação escondido como último recurso. Esquecer o PIN nunca apaga dados. |
 | Juntar e atualizar | Dois botões separados. "Juntar app" é só para apps novas: se a app já existir, avisa e manda-te para "⋯ → Atualizar". "Atualizar" avisa se o ficheiro não parecer da mesma app (tu confirmas). |
-| Versões | Ficam todas guardadas. Em cada app escolhes no Portal qual a versão ativa (normalmente a mais recente). |
+| Versões das apps | Ficam todas guardadas no Drive, cada uma na sua pasta `versoes/vN/`. |
 | Remover uma app | Possível, com aviso e aprovação no telemóvel principal (fase 5). |
 | Versão de cada app | Cada aparelho escolhe a versão ativa de cada app (normalmente a mais recente). |
-| Versão do Portal | Uma só (a do GitHub). Para voltar atrás, envia-se outra vez a versão antiga para o GitHub. As versões ficam arquivadas na secção Documentação (por fazer). |
+| Versão do Portal | Uma só (a do GitHub). Para voltar atrás, envia-se outra vez a versão antiga para o GitHub. Não se escolhe a versão do Portal. As versões antigas ficam arquivadas na secção Documentação (fase 2). |
+| Documentação (fase 2) | Secção no Portal com cópia de tudo (versões do Portal, guias, Regras, decisões), guardada no Drive só para leitura. Arquivo automático: cada versão nova do Portal guarda-se sozinha lá. |
+| Dados de cada app (fase 2) | Cada app tem o seu próprio `localStorage`, separado das outras. |
 | Regras para apps | Ficam dentro do Portal, guardadas no teu Drive (não no GitHub), escondidas atrás de uma palavra-passe, para ver e descarregar (fase 2). |
 | Temas | Original, Claro e Escuro, em Definições → Aspeto (feito na 1.2). |
-| Modos dos aparelhos | No browser (sem instalar): só com internet, nada fica guardado. Instalado no PC: guarda numa pasta que escolhes, com avisos se ela mudar de sítio. Instalado no Android: guarda no telemóvel. Todas as transferências se veem e podem ser canceladas ou retomadas. |
+| Modos dos aparelhos | No browser (sem instalar): só com internet; os programas ficam em cache para abrir mais depressa, os dados não ficam guardados. Instalado no PC: guarda numa pasta que escolhes, com avisos se ela mudar de sítio. Instalado no Android: guarda no telemóvel. Todas as transferências se veem e podem ser canceladas ou retomadas. |
 | Formato das apps | Ficheiro "Regras para apps do Portal": juntar a cada chat de app. |
 | Para mais tarde | Impressão digital, cifra dos dados guardados no aparelho, BitLocker. |
 
 ## G. Coisas a saber
 
 - **Não mexas à mão na pasta `Portal` do Drive.** O Portal só vê o que ele próprio criou.
-- **Esqueceste-te do PIN?** Na fase 1, **Esqueci-me** repõe só esse aparelho (o que está no Drive fica). Na fase 6 passa a haver recuperação a sério.
+- **Esqueceste-te do PIN?** **Esqueci-me** repõe só esse aparelho (o que está no Drive fica), mas para voltar a entrar precisas do mesmo PIN, porque é único. A recuperação a sério chega na fase 6.
+- **Depois de atualizar para a 1.4, abre primeiro o PC:** o PIN do PC passa a ser o PIN único. Os outros aparelhos adotam-no a seguir.
 - **Atualizar uma app:** só no Portal (no PC): **⋯ → Atualizar**. Não mexes no GitHub nem no Drive.
 
 ## Ficheiros
@@ -130,8 +136,9 @@ Se algo falhar, diz-me o número do teste e o que apareceu no ecrã.
 | `index.html`, `css/`, `icons/` | ecrãs do Portal |
 | `config.js` | o ID do cliente Google (o único ficheiro que mudas; nunca o substituas numa atualização) |
 | `sw.js` | funcionar sem internet; serve as apps em `/a/<id>/…` |
+| `404.html` | um endereço `/a/…` aberto fora do Portal leva ao Portal |
 | `js/main.js` | ecrãs e lógica |
-| `js/cofre.js` | PIN / palavra-passe |
+| `js/cofre.js` | PIN / palavra-passe (e o PIN único no Drive) |
 | `js/drive.js` | Google Drive |
 | `js/apps.js` | juntar, guardar e apagar apps; bibliotecas externas |
 | `js/armazem.js` | base de dados local (IndexedDB) |

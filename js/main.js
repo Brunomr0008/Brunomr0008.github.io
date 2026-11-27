@@ -4,12 +4,14 @@ import * as Cofre from './cofre.js';
 import * as Drive from './drive.js';
 import * as Apps from './apps.js';
 
-const VERSAO = '1.3';
-const VERSAO_PORTAL = 'Portal 1.3 · 26/11/2026';
+const VERSAO = '1.4';
+const VERSAO_PORTAL = 'Portal 1.4 · 27/11/2026';
 // Versão que cada ficheiro deve ter nesta versão do Portal (para detetar atualizações incompletas)
-const ESPERADO = { 'index.html': '1.3', 'css/portal.css': '1.3', 'js/main.js': '1.3', 'js/cofre.js': '1.3', 'js/drive.js': '1.3', 'js/apps.js': '1.3', 'sw.js': '1.3' };
+const ESPERADO = { 'index.html': '1.4', 'css/portal.css': '1.4', 'js/main.js': '1.4', 'js/cofre.js': '1.4', 'js/drive.js': '1.4', 'js/apps.js': '1.3', 'sw.js': '1.4' };
 // Novidades: título em inglês (máx. 40 caracteres) e descrição em português
 const NOVIDADES = [
+  { v: '1.4', data: '27/11/2026', titulo: 'Single PIN, version folders, faster sync',
+    texto: 'PIN único para todos os aparelhos: fica guardado no Drive, protegido (só o "resumo", nunca o PIN). Num aparelho ou browser novo, primeiro entras com Google e depois escreves o PIN do Portal (já não se cria um PIN novo). No Drive, cada versão de uma app fica na sua pasta (versoes/v1, v2…); a pasta antiga "programa" é arrumada sozinha. Os ficheiros que não mudaram desde a versão anterior são copiados no próprio Drive, em vez de enviados outra vez, e até 3 ficheiros são enviados ao mesmo tempo. No browser (sem instalar), as apps só abrem com internet. Definições numa janela própria, com "← Voltar". Corrigido o aviso vermelho que aparecia sem internet depois do PIN. Um endereço /a/… aberto fora do Portal leva ao Portal (404.html).' },
   { v: '1.3', data: '26/11/2026', titulo: 'Settings sections, transfers, history',
     texto: 'Definições divididas por secções. Histórico de erros, avisos e informações, com filtro por datas, copiar e exportar. Transferências com progresso real, pausar, retomar e cancelar; um envio interrompido continua onde parou. Indicador Online / Sem internet que testa a ligação a sério. Barra "A atualizar o Portal" que bloqueia o ecrã do PIN até terminar. Contagem decrescente depois de 5 tentativas erradas. Temas escolhidos com botões; o Escuro passou a preto. Teclado do PIN mais visível. Editar o nome e a descrição das apps. "Juntar app" reconhece uma app que já existe e manda-te para "Atualizar"; "Atualizar" avisa se o ficheiro não parecer da mesma app.' },
   { v: '1.2', data: '26/11/2026', titulo: 'Themes, PIN dots and update checks',
@@ -20,6 +22,8 @@ const NOVIDADES = [
     texto: 'Primeira versão: instalar o Portal, PIN ou palavra-passe, ligar ao Google Drive, juntar, atualizar e abrir apps, funcionar sem internet.' },
 ];
 const CFG = window.PORTAL_CONFIG || {};
+// Instalado como app (PC ou Android) ou aberto no browser? No browser, as apps só abrem com internet.
+const instalado = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches || navigator.standalone === true;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
@@ -144,7 +148,10 @@ function definirOnline(v) {
     E.online = v;
     registar(v ? 'info' : 'aviso', v ? 'Ligação à internet recuperada.' : 'Sem ligação à internet.');
     if (v) { Drive.prepararGIS().catch(() => {}); processarFila(); }
-    else if (E.controlo) E.controlo.abort();
+    else {
+      if (E.controlo) E.controlo.abort();
+      if (E.appAberta && !instalado()) { fecharApp(); aviso('Perdeste a internet. No browser, as apps só funcionam com internet.', { erro: true }); }
+    }
   }
   desenharLigacao();
   atualizarEstado();
@@ -186,6 +193,8 @@ function registarSW() {
   if (!('serviceWorker' in navigator)) { aviso('Este browser não suporta funcionar sem internet.', { erro: true }); return; }
   const tinha = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(reg => {
+    // pede sempre ao GitHub para ver se há versão nova (não depende só do browser)
+    if (tinha) reg.update().catch(() => {});
     reg.addEventListener('updatefound', () => {
       const nova = reg.installing;
       if (!nova || !tinha) return;
@@ -196,7 +205,11 @@ function registarSW() {
         if (nova.state === 'redundant') { mostrarAtualizacao(false); registar('erro', 'A instalação da versão nova do Portal falhou.'); }
       });
     });
-  }).catch(e => aviso('Erro ao preparar o modo sem internet: ' + e.message, { erro: true }));
+  }).catch(e => {
+    // Sem internet o browser não consegue ver se há versão nova: não é um erro, o Portal continua a funcionar
+    if (navigator.serviceWorker.controller) registar('aviso', 'Não foi possível procurar uma versão nova do Portal (sem internet?).');
+    else aviso('Erro ao preparar o modo sem internet: ' + e.message, { erro: true });
+  });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!tinha) return;
     registar('info', 'Versão nova do Portal instalada.');
@@ -227,12 +240,36 @@ function ajustarCamposSegredo(tipo, rotulo, campos) {
   rotulo.textContent = tipo === 'pin' ? (rotulo.id === 'rot-m1' ? 'Novo PIN (4 a 8 algarismos)' : 'PIN (4 a 8 algarismos)') : (rotulo.id === 'rot-m1' ? 'Nova palavra-passe (mín. 6)' : 'Palavra-passe (mín. 6 caracteres)');
   for (const c of campos) { c.inputMode = tipo === 'pin' ? 'numeric' : 'text'; c.value = ''; }
 }
+// Primeira vez neste aparelho: entrar com Google; depois o PIN único do Portal (ou criá-lo, se for a primeira vez de sempre)
+let remotoPin = null;
 function configInicial() {
   mostrar('ecra-config');
-  const passo = n => $$('#ecra-config [data-passo]').forEach(d => d.hidden = d.dataset.passo != n);
-  passo(1);
+  const passo = n => $$('#ecra-config [data-passo]').forEach(d => d.hidden = d.dataset.passo !== n);
+  passo('google');
+  if (!CFG.googleClientId) $('#erro-google').textContent = 'Falta pôr o ID do cliente Google no ficheiro config.js (vê o LEIA-ME).';
+  $('#btn-config-google').onclick = async () => {
+    $('#erro-google').textContent = '';
+    if (!E.online) return $('#erro-google').textContent = 'Na primeira vez num aparelho é preciso internet.';
+    const ok = await ligarGoogle();
+    if (!ok) { if (!$('#erro-google').textContent) $('#erro-google').textContent = 'Não foi possível entrar. Tenta outra vez.'; return; }
+    try { remotoPin = await Drive.lerSeguranca(E.raiz); } catch (e) { $('#erro-google').textContent = 'Não consegui ler o Drive: ' + e.message; return; }
+    if (remotoPin) { passo('entrar'); $('#pin-entrar').inputMode = remotoPin.tipo === 'pin' ? 'numeric' : 'text'; $('#pin-entrar').focus(); }
+    else { passo('criar'); $('#seg1').focus(); }
+  };
+  $('#form-entrar').onsubmit = async ev => {
+    ev.preventDefault();
+    const s = $('#pin-entrar').value; if (!s) return;
+    $('#erro-entrar').textContent = 'A verificar…';
+    const r = await Cofre.verificarRemoto(s, remotoPin);
+    $('#pin-entrar').value = '';
+    if (!r.ok) return $('#erro-entrar').textContent = r.espera ? `Demasiadas tentativas. Espera ${r.espera} s.` : 'Errado.';
+    await Cofre.importar(remotoPin);
+    registar('info', 'Aparelho novo ligado ao Portal com o PIN único.');
+    E.desbloqueado = true;
+    $('#txt-pronto').textContent = `Ligado${E.email ? ' como ' + E.email : ''}. Este aparelho usa o PIN único do Portal.`;
+    passo('pronto');
+  };
   prepararAlternar($('#ecra-config'), t => { tipoNovo = t; ajustarCamposSegredo(t, $('#rot-seg1'), [$('#seg1'), $('#seg2')]); });
-  $('#seg1').focus();
   $('#form-segredo').onsubmit = async ev => {
     ev.preventDefault();
     const s1 = $('#seg1').value, s2 = $('#seg2').value;
@@ -241,20 +278,39 @@ function configInicial() {
     if (s1 !== s2) return $('#erro-seg').textContent = 'Não são iguais.';
     $('#erro-seg').textContent = '';
     await Cofre.definir(s1, tipoNovo);
-    registar('info', 'Portal configurado neste aparelho.');
+    await sincronizarPin(true);
+    registar('info', 'PIN único do Portal criado.');
     E.desbloqueado = true;
-    passo(2);
-    if (!CFG.googleClientId) $('#erro-google').textContent = 'Falta pôr o ID do cliente Google no ficheiro config.js (vê o LEIA-ME). Podes fazer isto mais tarde.';
+    $('#txt-pronto').textContent = `Ligado${E.email ? ' como ' + E.email : ''}. O PIN vai servir para todos os teus aparelhos.`;
+    passo('pronto');
   };
-  $('#btn-config-google').onclick = async () => {
-    $('#erro-google').textContent = '';
-    const ok = await ligarGoogle();
-    if (ok) { $('#txt-pronto').textContent = `Ligado ao Drive${E.email ? ' como ' + E.email : ''}. A pasta Portal está pronta.`; passo(3); }
-    else if (!$('#erro-google').textContent) $('#erro-google').textContent = 'Não foi possível ligar. Podes tentar outra vez ou fazer mais tarde.';
-  };
-  $('#btn-config-depois').onclick = () => { $('#txt-pronto').textContent = 'Podes ligar ao Drive quando quiseres, no botão de estado lá em cima ou nas Definições.'; passo(3); };
   $('#btn-config-fim').onclick = () => { navigator.storage?.persist?.(); entrarNoInicio(); };
 }
+
+// Mantém o PIN deste aparelho igual ao do Drive (seguranca.json). Muda-se num aparelho → os outros apanham a mudança.
+async function sincronizarPin(forcarEnvio = false) {
+  if (!E.online || !Drive.temToken() || !E.raiz) return;
+  try {
+    const remoto = await Drive.lerSeguranca(E.raiz);
+    const loc = await Cofre.estadoSinc(); if (!loc) return;
+    if (!remoto || forcarEnvio || (loc.sinc && loc.em > loc.sinc && loc.em > (remoto.mudadoEm || 0))) {
+      const meu = await Cofre.exportar();
+      meu.mudadoPor = E.aparelho;
+      await Drive.escreverSeguranca(E.raiz, meu);
+      await Cofre.marcarSinc(meu.mudadoEm);
+      registar('info', remoto ? 'PIN único atualizado no Drive.' : 'PIN deste aparelho guardado no Drive como PIN único.');
+    } else if (!loc.sinc || remoto.mudadoEm > loc.sinc) {
+      const antes = await Cofre.exportar();
+      await Cofre.importar(remoto);
+      if (antes.resumo !== remoto.resumo) {
+        compPin = remoto.tipo === 'pin' ? remoto.comprimento || 0 : 0;
+        registar('aviso', 'Este aparelho passou a usar o PIN único do Portal.');
+        aviso('Este aparelho passou a usar o PIN único do Portal (o mesmo dos outros aparelhos).', { ms: 9000, registo: false });
+      }
+    }
+  } catch (e) { registar('aviso', 'Não consegui sincronizar o PIN: ' + e.message); }
+}
+setInterval(() => { if (E.desbloqueado) sincronizarPin(); }, 10 * 60 * 1000);
 
 /* ================= bloqueio ================= */
 let pinAtual = '';
@@ -337,7 +393,7 @@ document.addEventListener('keydown', ev => {
 $('#bloq-senha').onsubmit = ev => { ev.preventDefault(); tentar($('#senha').value); };
 $('#btn-esqueci').onclick = async () => {
   const ok = await confirmar('Esqueceste-te do PIN?',
-    'Sem o PIN, a única forma é repor este aparelho: apaga o Portal e as apps DESTE aparelho e voltas a configurar. O que já está no Google Drive não se perde, mas o que ainda não foi enviado perde-se. (Na fase 6 haverá o código de recuperação.)',
+    'Repor este aparelho apaga o Portal e as apps DESTE aparelho. O que já está no Google Drive não se perde (o que ainda não foi enviado perde-se). Atenção: o PIN é o mesmo em todos os aparelhos, por isso, para voltares a entrar, precisas na mesma dele. Se o tiveres esquecido em todo o lado, ainda não há forma de recuperar: o código de recuperação chega na fase 6.',
     { sim: 'Repor este aparelho', perigo: true });
   if (ok) { await A.apagarTudo(); location.replace('/'); }
 };
@@ -346,6 +402,7 @@ function desbloquear() {
   $('#ecra-bloqueio').hidden = true;
   $('#moldura').inert = false;
   registar('info', 'Portal desbloqueado.');
+  sincronizarPin();
   if (!E.appAberta && $('#ecra-inicio').hidden) entrarNoInicio();
 }
 document.addEventListener('visibilitychange', () => {
@@ -463,6 +520,7 @@ async function processarFila(manual = false) {
   E.pendentes = fila.length;
   if (E.pausado || !E.online || !Drive.temToken() || !CFG.googleClientId) { atualizarEstado(); return; }
   if (!fila.length) {
+    await arrumarApps();
     if (manual) {
       try { await garantirRaiz(true); aviso('Está tudo no Drive.'); }
       catch (e) { tratarErroDrive(e); }
@@ -481,12 +539,12 @@ async function processarFila(manual = false) {
         E.aEnviar = { id: app.id, nome: app.nome, feito: 0, total: app.tamanho, inicio: Date.now() };
         registar('info', `A enviar "${app.nome}" (versão ${app.versao}) para o Drive.`);
         atualizarEstado();
-        const pastaApp = await Drive.enviarPrograma(raiz, app, c => Apps.lerFicheiro(app, c),
+        const r = await Drive.enviarPrograma(raiz, app, c => Apps.lerFicheiro(app, c),
           (feito, total) => { if (!E.aEnviar) return; E.aEnviar.feito = feito; E.aEnviar.total = total; atualizarEstado(); }, E.aparelho, E.controlo.signal);
         const atual = await Apps.obter(app.id);
-        if (atual) { atual.drive = { pasta: pastaApp, versao: app.versao, em: Date.now() }; delete atual.naoEnviado; await Apps.guardarMeta(atual); }
+        if (atual) { atual.drive = { pasta: r.pasta, versao: app.versao, em: Date.now() }; atual.arrumado = true; delete atual.naoEnviado; await Apps.guardarMeta(atual); }
         await apagarDaFilaSe(chave, valor);
-        registar('info', `"${app.nome}" enviada para o Drive.`);
+        registar('info', `"${app.nome}" (versão ${app.versao}) enviada para o Drive: ${r.enviados} ficheiro(s) enviado(s), ${r.copiados} copiado(s) da versão anterior.`);
         enviadas++;
       } else if (valor.tipo === 'meta') {
         if (app) await Drive.atualizarAppJson(raiz, app);
@@ -500,7 +558,21 @@ async function processarFila(manual = false) {
     } finally { E.aEnviar = null; E.controlo = null; }
   }
   if (enviadas) aviso(enviadas === 1 ? 'App enviada para o Drive.' : `${enviadas} apps enviadas para o Drive.`, { registo: false });
+  await arrumarApps();
   await atualizarApps();
+}
+// Formato antigo no Drive (pasta "programa") → versoes/v<N>. Faz-se uma vez por app.
+let aArrumar = false;
+async function arrumarApps() {
+  if (aArrumar || E.pausado || !E.online || !Drive.temToken() || !E.raiz) return;
+  aArrumar = true;
+  try {
+    for (const app of await Apps.listar()) {
+      if (!app.drive || app.arrumado) continue;
+      try { await Drive.arrumarApp(E.raiz, app.id); app.arrumado = true; await Apps.guardarMeta(app); registar('info', `"${app.nome}": versões arrumadas no Drive (versoes/v1, v2…).`); }
+      catch (e) { break; }
+    }
+  } finally { aArrumar = false; }
 }
 async function apagarDaFilaSe(chave, valor) {
   const agora = await A.ler('fila', chave);
@@ -567,6 +639,7 @@ $('#t-retomar').onclick = async () => {
 function abrirApp(id, { historico = true } = {}) {
   const app = E.apps.find(a => a.id === id);
   if (!app) { aviso('Essa app não está neste aparelho.', { erro: true }); if (location.hash) history.replaceState(null, '', '/'); return; }
+  if (!instalado() && !E.online) { aviso('No browser, as apps só abrem com internet. Para usar sem internet, instala o Portal.', { erro: true }); if (location.hash) history.replaceState(null, '', '/'); return; }
   E.appAberta = id;
   $('#nome-app').textContent = app.nome;
   $('#moldura').src = Apps.urlFicheiro(id, 'index.html');
@@ -584,6 +657,7 @@ function fecharApp() {
 }
 $('#btn-voltar').onclick = fecharApp;
 addEventListener('popstate', ev => {
+  if ($('#dlg-def').open && !ev.state?.def) { $('#dlg-def').close(); return; }
   if (!E.desbloqueado) return;
   if (ev.state?.app && ev.state.app !== E.appAberta) abrirApp(ev.state.app, { historico: false });
   else if (!ev.state?.app && E.appAberta && !location.hash.startsWith('#app=')) fecharApp();
@@ -793,17 +867,23 @@ $('#btn-juntar-ok').onclick = async () => {
 
 /* ================= definições (por secções) ================= */
 $('#btn-def').onclick = () => abrirDefinicoes();
-$('#def-fechar').onclick = () => $('#dlg-def').close();
-$$('#def-nav button').forEach(b => b.onclick = () => irPara(b.dataset.sec));
+$('#def-voltar').onclick = () => fecharDefinicoes();
+function fecharDefinicoes() {
+  if (!$('#dlg-def').open) return;
+  $('#dlg-def').close();
+  if (history.state?.def) history.back();
+}
+$('#dlg-def').addEventListener('cancel', ev => { ev.preventDefault(); fecharDefinicoes(); });
+$$('#def-nav button[data-sec]').forEach(b => b.onclick = () => irPara(b.dataset.sec));
 function irPara(sec) {
   E.secAtual = sec;
-  $$('#def-nav button').forEach(b => b.classList.toggle('ativo', b.dataset.sec === sec));
+  $$('#def-nav button[data-sec]').forEach(b => b.classList.toggle('ativo', b.dataset.sec === sec));
   $$('.def-conteudo section').forEach(s => s.classList.toggle('ativo', s.dataset.sec === sec));
   const f = { drive: desenharDrive, transf: desenharTransf, seguranca: desenharSeguranca, aspeto: () => aplicarTema(document.documentElement.dataset.tema), aparelho: desenharAparelho, historico: desenharHistorico, sobre: desenharSobre }[sec];
   f && f();
 }
 function abrirDefinicoes(sec = 'drive') {
-  if (!$('#dlg-def').open) $('#dlg-def').showModal();
+  if (!$('#dlg-def').open) { $('#dlg-def').showModal(); history.pushState({ def: 1, app: E.appAberta || undefined }, '', '#definicoes'); }
   irPara(sec);
 }
 function desenharDrive() {
@@ -832,7 +912,7 @@ async function desenharAparelho() {
     const li = document.createElement('li');
     const s = document.createElement('span'); s.textContent = `${app.nome} — ${tam(app.tamanho)}`;
     const b = document.createElement('button'); b.className = 'btn pequeno texto perigo'; b.type = 'button'; b.textContent = 'Apagar';
-    b.onclick = () => { $('#dlg-def').close(); appMenu = app; $('#m-apagar').onclick(); };
+    b.onclick = () => { fecharDefinicoes(); appMenu = app; $('#m-apagar').onclick(); };
     li.append(s, b); ul.appendChild(li);
   }
   if (!E.apps.length) { const li = document.createElement('li'); li.textContent = 'Nenhuma app instalada.'; li.className = 'suave'; ul.appendChild(li); }
@@ -910,15 +990,17 @@ $('#d-desligar').onclick = async () => {
   registar('info', 'Desligado do Google Drive.');
   atualizarEstado(); desenharDrive();
 };
-$('#d-bloquear').onclick = () => { $('#dlg-def').close(); mostrarBloqueio(); };
+$('#d-bloquear').onclick = () => { fecharDefinicoes(); mostrarBloqueio(); };
 $('#d-bloq-min').onchange = async ev => { E.bloquearMin = +ev.target.value; await A.conf.set('bloquearMin', E.bloquearMin); };
 let tipoMudar = 'pin';
 $('#d-mudar').onclick = async () => {
-  const f = $('#d-mudar-form'); f.hidden = !f.hidden;
+  const f = $('#d-mudar-form');
+  if (!f.hidden) { f.hidden = true; return; }
   tipoMudar = await Cofre.tipo();
   f.querySelectorAll('.alternar button').forEach(b => b.classList.toggle('ativo', b.dataset.tipo === tipoMudar));
   ajustarCamposSegredo(tipoMudar, $('#rot-m1'), [$('#m-novo1'), $('#m-novo2')]);
   $('#m-atual').value = ''; $('#erro-mudar').textContent = '';
+  f.hidden = false; $('#m-atual').focus();
 };
 prepararAlternar($('#d-mudar-form'), t => { tipoMudar = t; ajustarCamposSegredo(t, $('#rot-m1'), [$('#m-novo1'), $('#m-novo2')]); });
 $('#d-mudar-ok').onclick = async () => {
@@ -932,6 +1014,8 @@ $('#d-mudar-ok').onclick = async () => {
   await Cofre.definir(n1, tipoMudar);
   $('#d-mudar-form').hidden = true;
   registar('info', 'PIN / palavra-passe mudado.');
+  await sincronizarPin(true);
+  if (!E.online || !Drive.temToken()) aviso('O PIN novo vai para os outros aparelhos quando houver internet e ligação ao Drive.', { ms: 8000 });
   aviso('Guardado.', { registo: false });
 };
 $('#d-atualizar-portal').onclick = async () => {
@@ -955,7 +1039,7 @@ $('#d-atualizar-portal').onclick = async () => {
   }
 };
 $('#d-repor').onclick = async () => {
-  $('#dlg-def').close();
+  fecharDefinicoes();
   const ok = await confirmar('Repor este aparelho?', 'Apaga o Portal, o PIN e as apps DESTE aparelho. O que está no Google Drive fica. O que ainda não foi enviado perde-se.', { sim: 'Repor', perigo: true });
   if (!ok) return;
   E.pendentes = 0;

@@ -1,11 +1,11 @@
 // drive.js — Google Drive (só a permissão drive.file: o Portal vê apenas o que ele próprio cria)
 
-export const V = '1.3';
+export const V = '1.4';
 export const ESCOPO = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
 const PASTA = 'application/vnd.google-apps.folder';
-const TEMP = 'programa (a enviar';   // + ' vN)'
+const SUFIXO_TEMP = ' (a enviar)';
 const LIMITE_SIMPLES = 5 * 1024 * 1024;
 
 let token = null, expira = 0;
@@ -168,7 +168,7 @@ export async function listar(pai) {
   const q = `'${pai}' in parents and trashed=false`;
   let todos = [], pagina = '';
   do {
-    const r = await json(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size)&pageSize=1000&spaces=drive${pagina ? '&pageToken=' + pagina : ''}`);
+    const r = await json(`${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size,md5Checksum)&pageSize=1000&spaces=drive${pagina ? '&pageToken=' + pagina : ''}`);
     todos = todos.concat(r.files || []);
     pagina = r.nextPageToken || '';
   } while (pagina);
@@ -240,81 +240,181 @@ function dataURLparaBlob(u) {
 
 // Envia o programa de uma app para Portal/apps/<id>/programa/.
 // O programa anterior passa para versoes/v<n>/. Se o envio for interrompido, recomeça do zero na próxima vez.
-// Se o envio for interrompido (internet, pausa), na próxima vez continua: os ficheiros que já lá estão não voltam a ser enviados.
+/* ---------- MD5 (para saber se um ficheiro já está no Drive: o Drive guarda o MD5 de cada ficheiro) ---------- */
+const K_MD5 = new Int32Array(64).map((_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0);
+const S_MD5 = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+export function md5(buf) {
+  const bytes = new Uint8Array(buf), n = bytes.length;
+  const blocos = ((n + 8) >>> 6) + 1;
+  const w = new Int32Array(blocos * 16);
+  for (let i = 0; i < n; i++) w[i >> 2] |= bytes[i] << ((i & 3) * 8);
+  w[n >> 2] |= 0x80 << ((n & 3) * 8);
+  w[blocos * 16 - 2] = (n * 8) >>> 0;
+  w[blocos * 16 - 1] = Math.floor(n / 0x20000000);
+  let a0 = 0x67452301 | 0, b0 = 0xefcdab89 | 0, c0 = 0x98badcfe | 0, d0 = 0x10325476 | 0;
+  for (let k = 0; k < w.length; k += 16) {
+    let A = a0, B = b0, C = c0, D = d0;
+    for (let i = 0; i < 64; i++) {
+      let F, g;
+      if (i < 16) { F = (B & C) | (~B & D); g = i; }
+      else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) & 15; }
+      else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) & 15; }
+      else { F = C ^ (B | ~D); g = (7 * i) & 15; }
+      F = (F + A + K_MD5[i] + w[k + g]) | 0;
+      A = D; D = C; C = B;
+      const s = S_MD5[(i >> 4) * 4 + (i & 3)];
+      B = (B + ((F << s) | (F >>> (32 - s)))) | 0;
+    }
+    a0 = (a0 + A) | 0; b0 = (b0 + B) | 0; c0 = (c0 + C) | 0; d0 = (d0 + D) | 0;
+  }
+  const hex = x => { let s = ''; for (let i = 0; i < 4; i++) s += ((x >>> (i * 8)) & 255).toString(16).padStart(2, '0'); return s; };
+  return hex(a0) + hex(b0) + hex(c0) + hex(d0);
+}
+
+export async function copiar(id, nome, pai, sinal) {
+  const r = await json(`${API}/files/${id}/copy?fields=id`, {
+    method: 'POST', signal: sinal, headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ name: nome, parents: [pai] }),
+  });
+  return r.id;
+}
+
+// Lista uma pasta e as subpastas: caminho → {id, size, md5}
+async function mapearPasta(id) {
+  const pastas = new Map([['', id]]), ficheiros = new Map();
+  async function ir(pid, prefixo) {
+    for (const f of await listar(pid)) {
+      const rel = prefixo ? prefixo + '/' + f.name : f.name;
+      if (f.mimeType === PASTA) { pastas.set(rel, f.id); await ir(f.id, rel); }
+      else ficheiros.set(rel, { id: f.id, size: +f.size || 0, md5: f.md5Checksum || null });
+    }
+  }
+  await ir(id, '');
+  return { pastas, ficheiros };
+}
+
+const numV = n => +(String(n).match(/^v(\d+)$/)?.[1] ?? NaN);
+
+// Arruma o formato antigo: a pasta "programa" passa a versoes/v<N> (uma pasta por versão)
+export async function arrumarApp(raiz, appId) {
+  const apps = (await procurar('apps', raiz, true))[0]; if (!apps) return false;
+  const ap = (await procurar(appId, apps.id, true))[0]; if (!ap) return false;
+  const antigos = await procurar('programa', ap.id, true);
+  if (!antigos.length) return true;
+  let v = null;
+  const aj = (await procurar('app.json', ap.id, false))[0];
+  if (aj) { try { v = (await lerJSON(aj.id)).versao; } catch (e) {} }
+  const versoes = await pasta('versoes', ap.id);
+  const nomes = new Set((await listar(versoes)).map(f => f.name));
+  for (const p of antigos) {
+    let nome = 'v' + (v ?? 'anterior');
+    while (nomes.has(nome)) nome += ' (2)';
+    nomes.add(nome);
+    await mexer(p.id, { nome, novoPai: versoes, paiAntigo: ap.id });
+  }
+  return true;
+}
+
+// Envia uma versão de uma app para Portal/apps/<id>/versoes/v<N>/ (cada versão na sua pasta).
+// Se for interrompido, continua onde parou. Os ficheiros iguais aos da versão anterior são copiados no próprio Drive (não voltam a ser enviados).
 export async function enviarPrograma(raiz, app, lerFicheiro, progresso, aparelhoId, sinal) {
   const apps = await pasta('apps', raiz);
   const ap = await pasta(app.id, apps);
-  const nomeTemp = `${TEMP} v${app.versao})`;
+  await arrumarApp(raiz, app.id);
+  const versoes = await pasta('versoes', ap);
+  const nomeFinal = 'v' + app.versao, nomeTemp = nomeFinal + SUFIXO_TEMP;
 
-  // pastas temporárias de outras versões: para o lixo
-  let temp = null;
-  for (const f of await listar(ap)) {
-    if (f.mimeType !== PASTA || !f.name.startsWith(TEMP)) continue;
-    if (f.name === nomeTemp && !temp) temp = f.id; else await paraOLixo(f.id);
+  // pastas temporárias de outras versões vão para o lixo; a desta versão é reaproveitada
+  let temp = null, anterior = null, vAnt = -1;
+  for (const f of await listar(versoes)) {
+    if (f.mimeType !== PASTA) continue;
+    if (f.name.endsWith(SUFIXO_TEMP)) { if (f.name === nomeTemp && !temp) temp = f.id; else await paraOLixo(f.id); continue; }
+    const n = numV(f.name);
+    if (n < app.versao && n > vAnt) { vAnt = n; anterior = f.id; }
   }
-  if (!temp) temp = await criarPasta(nomeTemp, ap);
-
-  // o que já foi enviado numa tentativa anterior
-  const pastas = new Map([['', temp]]);
-  const existentes = new Map();
-  async function mapear(id, prefixo) {
-    for (const f of await listar(id)) {
-      const rel = prefixo ? prefixo + '/' + f.name : f.name;
-      if (f.mimeType === PASTA) { pastas.set(rel, f.id); await mapear(f.id, rel); }
-      else existentes.set(rel, { id: f.id, size: +f.size || 0 });
-    }
-  }
-  await mapear(temp, '');
+  if (!temp) temp = await criarPasta(nomeTemp, versoes);
+  const ja = await mapearPasta(temp);
+  const ant = anterior ? (await mapearPasta(anterior)).ficheiros : new Map();
+  const pastas = ja.pastas;
+  const criando = new Map();
   async function dir(rel) {
     if (pastas.has(rel)) return pastas.get(rel);
-    const i = rel.lastIndexOf('/');
-    const pai = await dir(i < 0 ? '' : rel.slice(0, i));
-    const id = await criarPasta(rel.slice(i + 1), pai);
-    pastas.set(rel, id);
-    return id;
+    if (criando.has(rel)) return criando.get(rel);
+    const p = (async () => {
+      const i = rel.lastIndexOf('/');
+      const pai = await dir(i < 0 ? '' : rel.slice(0, i));
+      const id = await criarPasta(rel.slice(i + 1), pai);
+      pastas.set(rel, id);
+      return id;
+    })();
+    criando.set(rel, p);
+    return p;
   }
 
   const total = app.ficheiros.reduce((s, f) => s + f.size, 0);
+  const emCurso = new Map();
   let feito = 0;
-  progresso?.(0, total);
-  for (const f of app.ficheiros) {
-    if (sinal?.aborted) throw erro('cancelado', 'Cancelado.');
-    const ja = existentes.get(f.path);
-    if (ja && ja.size === f.size) { feito += f.size; progresso?.(feito, total); continue; }
-    if (ja) await paraOLixo(ja.id);
-    const i = f.path.lastIndexOf('/');
-    const d = await dir(i < 0 ? '' : f.path.slice(0, i));
-    const base = feito;
-    await criarFicheiro(f.path.slice(i + 1), d, await lerFicheiro(f.path), f.type, { progresso: n => progresso?.(base + n, total), sinal });
-    feito += f.size;
-    progresso?.(feito, total);
+  const avisar = () => progresso?.(feito + [...emCurso.values()].reduce((s, x) => s + x, 0), total);
+  avisar();
+  let copiados = 0, enviados = 0;
+  const filaF = [...app.ficheiros];
+  // se um envio falhar (ou for cancelado), os outros param também
+  const parar = new AbortController();
+  sinal?.addEventListener('abort', () => parar.abort(), { once: true });
+  const sinalL = parar.signal;
+  async function trabalhador() {
+    while (filaF.length) {
+      if (sinalL.aborted) throw erro('cancelado', 'Cancelado.');
+      const f = filaF.shift();
+      const blob = await lerFicheiro(f.path);
+      const m = md5(await blob.arrayBuffer());
+      const aqui = ja.ficheiros.get(f.path);
+      if (aqui && aqui.md5 === m) { feito += f.size; avisar(); continue; }
+      if (aqui) await paraOLixo(aqui.id);
+      const i = f.path.lastIndexOf('/');
+      const d = await dir(i < 0 ? '' : f.path.slice(0, i));
+      const nome = f.path.slice(i + 1);
+      const igual = ant.get(f.path);
+      if (igual && igual.md5 === m) { await copiar(igual.id, nome, d, sinalL); copiados++; }
+      else {
+        emCurso.set(f.path, 0);
+        await criarFicheiro(nome, d, blob, f.type, { progresso: x => { emCurso.set(f.path, x); avisar(); }, sinal: sinalL });
+        emCurso.delete(f.path); enviados++;
+      }
+      feito += f.size; avisar();
+    }
   }
+  const trab = () => trabalhador().catch(e => { parar.abort(); throw e; });
+  const res = await Promise.allSettled([trab(), trab(), trab()]);
+  const falha = res.find(r => r.status === 'rejected' && r.reason?.code !== 'cancelado') || res.find(r => r.status === 'rejected');
+  if (falha) throw falha.reason;
   const temIconeProprio = !!app.icone && !app.ficheiros.some(f => f.path === 'icone.png');
-  if (temIconeProprio && !existentes.has('icone.png')) await criarFicheiro('icone.png', temp, dataURLparaBlob(app.icone), 'image/png', { sinal });
+  if (temIconeProprio && !ja.ficheiros.has('icone.png')) await criarFicheiro('icone.png', temp, dataURLparaBlob(app.icone), 'image/png', { sinal });
 
-  // versão anterior → versoes/
-  const atuais = await procurar('programa', ap, true);
-  if (atuais.length) {
-    let antiga = null;
-    const aj = await procurar('app.json', ap, false);
-    if (aj.length) { try { antiga = (await lerJSON(aj[0].id)).versao; } catch (e) {} }
-    const versoes = await pasta('versoes', ap);
-    for (const p of atuais) await mexer(p.id, { nome: 'v' + (antiga ?? 'anterior'), novoPai: versoes, paiAntigo: ap });
-  }
-  await mexer(temp, { nome: 'programa' });
+  // a versão fica com o nome final (se já existia uma pasta com esse nome, a antiga vai para o lixo)
+  for (const f of await procurar(nomeFinal, versoes, true)) await paraOLixo(f.id);
+  await mexer(temp, { nome: nomeFinal });
   await pasta('dados', ap);
-
+  const lista = (await listar(versoes)).filter(f => f.mimeType === PASTA && !isNaN(numV(f.name))).map(f => f.name).sort((x, y) => numV(x) - numV(y));
   await escreverJSON('app.json', ap, {
-    id: app.id, nome: app.nome, descricao: app.descricao || '', versao: app.versao,
-    icone: app.icone ? 'programa/icone.png' : null,
+    id: app.id, nome: app.nome, descricao: app.descricao || '', versao: app.versao, versaoAtual: app.versao,
+    versoes: lista, versaoDaApp: app.versaoApp || null, portalApp: app.portalApp || null,
+    icone: app.icone ? `versoes/${nomeFinal}/icone.png` : null,
     tamanho: total,
     ficheiros: app.ficheiros.map(({ path, size, type }) => ({ path, size, type })),
     cifra: app.cifra || { colecoes: [], ficheiros: false },
     atualizadoEm: new Date().toISOString(),
     enviadoPor: aparelhoId || null,
   });
-  return ap;
+  return { pasta: ap, copiados, enviados };
 }
+
+/* ---------- PIN único (guardado no Drive, protegido) ---------- */
+export async function lerSeguranca(raiz) {
+  const f = (await procurar('seguranca.json', raiz, false))[0];
+  return f ? lerJSON(f.id) : null;
+}
+export async function escreverSeguranca(raiz, obj) { return escreverJSON('seguranca.json', raiz, obj); }
 
 // Muda o nome/descrição no app.json do Drive (se a app já lá estiver)
 export async function atualizarAppJson(raiz, app) {

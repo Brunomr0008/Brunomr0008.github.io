@@ -1,6 +1,6 @@
 /* Portal — estilos */
 :root{
-  --portal-versao:"1.3";
+  --portal-versao:"1.4";
   --raio:16px;
   font-family:"Segoe UI",Roboto,"Helvetica Neue",system-ui,sans-serif;
   color:var(--tinta); background:var(--fundo);
@@ -178,7 +178,10 @@ details summary{cursor:pointer;color:var(--suave);font-size:.9rem;margin:.4rem 0
 .check input{width:auto}
 .btn.destaque{font-size:1rem;min-height:50px}
 /* definições por secções */
-.dialogo.def{width:min(880px,calc(100vw - 1.5rem));height:min(640px,calc(100dvh - 2rem))}
+.dialogo.def{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;margin:0;border-radius:0;box-shadow:none}
+.dialogo.def::backdrop{background:var(--fundo)}
+.voltar-def{font-weight:700!important;color:var(--acento)!important;margin-bottom:.4rem}
+.def-conteudo{max-width:860px}
 .def-grelha{display:grid;grid-template-columns:200px 1fr;height:100%}
 .def-nav{background:var(--fundo2);padding:1.2rem .7rem;display:flex;flex-direction:column;gap:.2rem;overflow:auto}
 .def-nav h2{padding:0 .6rem;margin-bottom:.6rem}
@@ -222,3 +225,6 @@ details summary{cursor:pointer;color:var(--suave);font-size:.9rem;margin:.4rem 0
 .novidades article{border-left:3px solid var(--acento);padding:.2rem .9rem;margin:.6rem 0}
 .novidades h4{margin:0;font-size:.98rem}
 .novidades p{margin:.2rem 0;font-size:.9rem;color:var(--suave)}
+
+#form-entrar input{margin:.6rem 0 .2rem}
+.bloqueio-online{position:fixed;inset:auto 0 0 0;z-index:40;background:var(--erro);color:#fff;padding:.6rem 1rem;text-align:center;font-size:.9rem}
