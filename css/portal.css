@@ -1,6 +1,6 @@
 /* Portal — estilos */
 :root{
-  --portal-versao:"1.6";
+  --portal-versao:"1.7";
   --raio:16px;
   font-family:"Segoe UI",Roboto,"Helvetica Neue",system-ui,sans-serif;
   color:var(--tinta); background:var(--fundo);
@@ -260,3 +260,9 @@ details summary{cursor:pointer;color:var(--suave);font-size:.9rem;margin:.4rem 0
 .docs-lista .acao:hover{background:var(--fundo2);color:var(--tinta)}
 .docs-lista .acao.perigo:hover{color:var(--erro)}
 .ocupado{pointer-events:none;opacity:.5}
+
+/* ---- 1.7 ---- */
+.docs-prog{background:var(--acento-suave);border:1.5px solid var(--acento);border-radius:12px;padding:.7rem .9rem;margin:.2rem 0}
+.docs-prog-txt{font-weight:600;font-size:.95rem;margin-bottom:.45rem;color:var(--tinta)}
+.docs-prog .progresso{height:14px;margin-top:0;background:var(--cartao)}
+.docs-prog .progresso div{background:var(--acento)}

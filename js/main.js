@@ -5,12 +5,14 @@ import * as Drive from './drive.js';
 import * as Apps from './apps.js';
 import * as Dados from './dados.js';
 
-const VERSAO = '1.6';
-const VERSAO_PORTAL = 'Portal 1.6 · 27/11/2026';
+const VERSAO = '1.7';
+const VERSAO_PORTAL = 'Portal 1.7 · 27/11/2026';
 // Versão que cada ficheiro deve ter nesta versão do Portal (para detetar atualizações incompletas)
-const ESPERADO = { 'index.html': '1.6', 'css/portal.css': '1.6', 'js/main.js': '1.6', 'js/cofre.js': '1.4', 'js/drive.js': '1.5', 'js/apps.js': '1.3', 'js/dados.js': '1.6', 'js/gavetabd.js': '1.5', 'js/gaveta.js': '1.5', 'sw.js': '1.6' };
+const ESPERADO = { 'index.html': '1.7', 'css/portal.css': '1.7', 'js/main.js': '1.7', 'js/cofre.js': '1.4', 'js/drive.js': '1.5', 'js/apps.js': '1.3', 'js/dados.js': '1.6', 'js/gavetabd.js': '1.5', 'js/gaveta.js': '1.5', 'sw.js': '1.7' };
 // Novidades: título em inglês (máx. 40 caracteres) e descrição em português
 const NOVIDADES = [
+  { v: '1.7', data: '27/11/2026', titulo: 'Fast update checks, tidy guides',
+    texto: 'O Portal pergunta ao GitHub de minuto a minuto (e antes de cada envio para o Drive) se há versão nova; quando há, bloqueia e recarrega sozinho para a instalar, sem enviar nada com a versão antiga. Documentação: barra de progresso bem visível ao juntar ficheiros; na pasta Guias, ao juntar guias novos (ficheiros, pasta ou .zip), fica só a versão mais recente de cada guia e as anteriores vão para "Versões antigas"; um guia que já lá está não é enviado outra vez. Transferências: mostra quanto falta enviar no total.' },
   { v: '1.6', data: '27/11/2026', titulo: 'Strict updates, Documentation editing',
     texto: 'Com internet e uma versão nova do Portal no GitHub, já não há "Continuar sem atualizar": podes entrar com o PIN, mas as apps, a Documentação, as definições e os envios ficam parados até a versão nova estar instalada. Documentação: apagar (vai para o lixo do Drive, 30 dias), mudar o nome e juntar pastas inteiras, além de ficheiros. Transferências: deixam de aparecer linhas repetidas; o total conta tudo o que falta enviar, também o que vai chegando durante uma importação; a velocidade é a dos últimos 20 segundos. Os dados vão para o Drive de seguida, sem esperar pela volta seguinte.' },
   { v: '1.5', data: '27/11/2026', titulo: 'App data drawer, Documentation, updates',
@@ -259,6 +261,7 @@ async function versaoPublicada() {
 // (apps, Documentação, definições e envios) até a versão nova estar instalada. Não há forma de continuar sem atualizar.
 async function verificarVersao() {
   if (!navigator.serviceWorker?.controller) return false;
+  E.versaoVistaEm = Date.now();
   const v = await versaoPublicada();
   if (!v || !maisRecente(v, VERSAO)) return false;
   if (E.desatualizado !== v) registar('aviso', `Há uma versão nova do Portal (${v}); este aparelho tem a ${VERSAO}. É preciso atualizar.`);
@@ -266,7 +269,16 @@ async function verificarVersao() {
   E.forcarRecarga = true;   // quando a versão nova chegar, o Portal recarrega sozinho
   pedirVersaoNova();
   aplicarBloqueioVersao();
+  // se o service worker novo não chegar em 20 s, recarrega a página (o recarregar também procura a versão nova)
+  clearTimeout(tRecarregar);
+  tRecarregar = setTimeout(() => { if (E.desatualizado && E.online) { registar('info', 'A recarregar para instalar a versão nova do Portal.'); location.reload(); } }, 20000);
   return true;
+}
+let tRecarregar = null;
+// Verifica se a última verificação já tem mais de "ms" (para não perguntar ao GitHub a cada passo)
+async function verificarSeNecessario(ms = 30000) {
+  if (!E.online || Date.now() - (E.versaoVistaEm || 0) < ms) return !!E.desatualizado;
+  return verificarVersao();
 }
 function pedirVersaoNova() { navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}); }
 let tPedirVersao = null, tTextoVersao = null;
@@ -289,7 +301,7 @@ function aplicarBloqueioVersao() {
   return true;
 }
 $('#pa-atualizar').onclick = () => { $('#pa-estado').textContent = 'A atualizar…'; pedirVersaoNova(); setTimeout(() => location.reload(), 1500); };
-setInterval(() => { if (!document.hidden && E.online) verificarVersao(); }, 15 * 60 * 1000);
+setInterval(() => { if (!document.hidden && E.online) verificarVersao(); }, 60 * 1000);
 
 /* ================= primeira configuração ================= */
 let tipoNovo = 'pin';
@@ -604,12 +616,13 @@ async function garantirRaiz(verificar = false) {
 // Envia para o Drive o que falta: programas de apps, alterações de nome/descrição e os dados das apps
 async function processarFila(manual = false) {
   if (E.aProcessar || E.aEnviar) return;
-  if (E.desatualizado) { atualizarEstado(); return; }   // com o Portal desatualizado, os envios esperam pela versão nova
   E.aProcessar = true;
   let mudou = false;
   try {
     const fila = await contarPendentes();
     if (E.pausado || !E.online || !Drive.temToken() || !CFG.googleClientId) return;
+    // antes de enviar, confirma que este Portal é a versão mais recente (nada vai para o Drive com uma versão antiga)
+    if (E.desatualizado || (await verificarSeNecessario(30000))) return;
     let enviadas = 0, falhou = false;
     for (const { chave, valor } of fila) {
       if (E.pausado) break;
@@ -736,7 +749,14 @@ async function desenharTransf() {
     const resta = vel ? Math.max(0, (total - feito) / vel) : 0;
     at.innerHTML = '';
     const t = document.createElement('div');
-    t.textContent = `A enviar "${nome}": ${tam(feito)} de ${tam(total)}` + (vel ? ` · ${tam(vel)}/s · faltam ~${resta > 90 ? Math.ceil(resta / 60) + ' min' : Math.ceil(resta) + ' s'}` : '');
+    const tempo = vel ? ` · ~${resta > 90 ? Math.ceil(resta / 60) + ' min' : Math.ceil(resta) + ' s'}` : '';
+    if (E.aEnviar.id === 'dados') {
+      // dados: mostra quanto falta no total (tudo o que ainda não está no Drive), não só desta vez
+      const pend = Object.values(E.dadosPend || {});
+      const nf = pend.reduce((s, d) => s + d.ficheiros, 0), nr = pend.reduce((s, d) => s + d.registos, 0);
+      const partes = []; if (nf) partes.push(`${nf} ficheiro${nf === 1 ? '' : 's'}`); if (nr) partes.push(`${nr} registo${nr === 1 ? '' : 's'}`);
+      t.textContent = `A enviar ${nome}: faltam ${tam(Math.max(0, total - feito))}${partes.length ? ' (' + partes.join(', ') + ')' : ''}` + (vel ? ` · ${tam(vel)}/s` : '') + tempo;
+    } else t.textContent = `A enviar "${nome}": ${tam(feito)} de ${tam(total)}` + (vel ? ` · ${tam(vel)}/s` : '') + tempo;
     const b = document.createElement('div'); b.className = 'progresso';
     b.innerHTML = `<div style="width:${(p * 100).toFixed(1)}%"></div><span>${Math.floor(p * 100)}%</span>`;
     at.append(t, b);
@@ -791,6 +811,7 @@ $('#t-retomar').onclick = async () => {
 /* ================= abrir e fechar apps ================= */
 function abrirApp(id, { historico = true } = {}) {
   if (aplicarBloqueioVersao()) return;
+  verificarSeNecessario(30000);
   const app = E.apps.find(a => a.id === id);
   if (!app) { aviso('Essa app não está neste aparelho.', { erro: true }); if (location.hash) history.replaceState(null, '', '/'); return; }
   if (!instalado() && !E.online) { aviso('No browser, as apps só abrem com internet. Para usar sem internet, instala o Portal.', { erro: true }); if (location.hash) history.replaceState(null, '', '/'); return; }
@@ -1297,6 +1318,10 @@ async function desenharDocs() {
   l.sort((a, b) => (b.mimeType === PASTA) - (a.mimeType === PASTA) || a.name.localeCompare(b.name, 'pt', { numeric: true }));
   const np = l.filter(f => f.mimeType === PASTA).length;
   $('#docs-info').textContent = l.length ? `${np} pasta${np === 1 ? '' : 's'}, ${l.length - np} ficheiro${l.length - np === 1 ? '' : 's'}.` : 'Pasta vazia. Usa "+ Juntar ficheiros" ou "+ Juntar pasta".';
+  if (naPastaGuias()) {
+    const atuais = l.map(f => f.name.match(RE_GUIA)).filter(Boolean).sort((a, b) => a[1] - b[1]).map(g => `${g[1]} (v${g[3]})`);
+    if (atuais.length) $('#docs-info').textContent = `Guias atuais: ${atuais.join(' · ')}. Ao juntar guias novos (ficheiros, pasta ou .zip), fica só a versão mais recente de cada um; as anteriores vão para "${ANTIGAS}".`;
+  }
   for (const f of l) {
     const li = document.createElement('li');
     const b = document.createElement('button'); b.type = 'button'; b.className = 'abrir';
@@ -1363,9 +1388,70 @@ $('#docs-juntar-pasta').onclick = () => $('#docs-in-pasta').click();
 $('#docs-in').onchange = ev => { const fs = [...ev.target.files]; ev.target.value = ''; juntarNaDocs(fs, false); };
 $('#docs-in-pasta').onchange = ev => { const fs = [...ev.target.files]; ev.target.value = ''; juntarNaDocs(fs, true); };
 // Envia ficheiros (ou uma pasta inteira, com as subpastas) para a pasta da Documentação que está aberta
+// Guias: "N - Título (vX).pdf". Na pasta Guias fica sempre a versão mais recente de cada guia; as anteriores vão para "Versões antigas".
+const RE_GUIA = /^(\d+)\s*-\s*(.+?)\s*\(v(\d+)\)\.pdf$/i;
+const ANTIGAS = 'Versões antigas';
+const naPastaGuias = () => D.pilha.length === 2 && D.pilha[1].nome === DOCS_PASTAS[1];
+function barraDocs(txt, frac) {
+  const b = $('#docs-prog');
+  if (txt == null) { b.hidden = true; return; }
+  b.hidden = false;
+  $('#docs-prog-txt').textContent = txt;
+  $('#docs-prog-barra').style.width = (Math.max(0, Math.min(1, frac || 0)) * 100).toFixed(1) + '%';
+}
+async function arrumarGuias(guiasId) {
+  const l = await Drive.listar(guiasId);
+  const grupos = new Map();
+  for (const f of l) {
+    const g = f.mimeType !== PASTA && f.name.match(RE_GUIA);
+    if (!g) continue;
+    const n = +g[1];
+    if (!grupos.has(n)) grupos.set(n, []);
+    grupos.get(n).push({ f, v: +g[3] });
+  }
+  let movidos = 0, antigas = null;
+  for (const lista of grupos.values()) {
+    lista.sort((x, y) => y.v - x.v);
+    for (const { f } of lista.slice(1)) {
+      antigas = antigas || await Drive.pasta(ANTIGAS, guiasId);
+      await Drive.mexer(f.id, { novoPai: antigas, paiAntigo: guiasId });
+      movidos++;
+    }
+  }
+  if (movidos) registar('info', `Guias: ${movidos} versão(ões) antiga(s) passada(s) para "${ANTIGAS}".`);
+  return movidos;
+}
 async function juntarNaDocs(fs, comPastas) {
   if (!fs.length) return;
   const at = atualDocs();
+  const guias = naPastaGuias();
+  // lista do que vai ser enviado: { nome, blob, dir }
+  let itens = [];
+  for (const f of fs) {
+    const cam = comPastas && f.webkitRelativePath ? f.webkitRelativePath : f.name;
+    if (guias && /\.zip$/i.test(f.name) && window.JSZip) {
+      try {
+        const z = await JSZip.loadAsync(f);
+        const dentro = Object.values(z.files).filter(e => !e.dir && RE_GUIA.test(e.name.split('/').pop()));
+        if (dentro.length) {
+          for (const e of dentro) itens.push({ nome: e.name.split('/').pop(), blob: new Blob([await e.async('arraybuffer')], { type: 'application/pdf' }), dir: '' });
+          continue;
+        }
+      } catch (e) {}
+    }
+    const guia = guias && RE_GUIA.test(f.name);
+    itens.push({ nome: f.name, blob: f, dir: guia ? '' : (cam.includes('/') ? cam.slice(0, cam.lastIndexOf('/')) : '') });
+  }
+  let saltados = 0;
+  if (guias) {
+    // não volta a enviar um guia que já lá está (mesmo nome e versão)
+    const ja = new Set((await Drive.listar(at.id)).map(f => f.name));
+    const ant = (await Drive.procurar(ANTIGAS, at.id, true))[0];
+    if (ant) for (const f of await Drive.listar(ant.id)) ja.add(f.name);
+    const antes = itens.length;
+    itens = itens.filter(x => !(RE_GUIA.test(x.nome) && ja.has(x.nome)));
+    saltados = antes - itens.length;
+  }
   const pastas = new Map([['', at.id]]);
   async function pastaPara(rel) {
     if (pastas.has(rel)) return pastas.get(rel);
@@ -1375,24 +1461,29 @@ async function juntarNaDocs(fs, comPastas) {
     pastas.set(rel, id);
     return id;
   }
-  const total = fs.reduce((s, f) => s + f.size, 0);
+  const total = itens.reduce((s, x) => s + x.blob.size, 0);
   let n = 0, feito = 0;
+  const inicio = Date.now();
   $('#docs-acoes').classList.add('ocupado');
   try {
-    for (const f of fs) {
+    for (const x of itens) {
       n++;
-      const cam = comPastas && f.webkitRelativePath ? f.webkitRelativePath : f.name;
-      const dir = cam.includes('/') ? cam.slice(0, cam.lastIndexOf('/')) : '';
-      const pai = await pastaPara(dir);
-      await Drive.criarFicheiro(f.name, pai, f, f.type || 'application/octet-stream', {
-        progresso: b => { $('#docs-info').textContent = `A enviar "${cam}" (${n} de ${fs.length})… ${total ? Math.floor(100 * (feito + b) / total) : 100}%`; },
+      const pai = await pastaPara(x.dir);
+      await Drive.criarFicheiro(x.nome, pai, x.blob, x.blob.type || 'application/octet-stream', {
+        progresso: b => {
+          const seg = (Date.now() - inicio) / 1000, vel = seg > 2 ? (feito + b) / seg : 0;
+          barraDocs(`A enviar "${x.nome}" (${n} de ${itens.length}) · ${tam(feito + b)} de ${tam(total)}${vel ? ` · ${tam(vel)}/s` : ''}`, total ? (feito + b) / total : 1);
+        },
       });
-      feito += f.size;
+      feito += x.blob.size;
     }
+    let movidos = 0;
+    if (guias) { barraDocs('A arrumar os guias…', 1); movidos = await arrumarGuias(at.id); }
     const raizNome = comPastas && fs[0].webkitRelativePath ? fs[0].webkitRelativePath.split('/')[0] : '';
-    registar('info', comPastas ? `Documentação: pasta "${raizNome}" juntada em "${at.nome}" (${fs.length} ficheiros).` : `Documentação: ${fs.length} ficheiro(s) juntado(s) em "${at.nome}".`);
-    aviso(comPastas ? `Pasta "${raizNome}" guardada na Documentação.` : fs.length === 1 ? 'Ficheiro guardado na Documentação.' : `${fs.length} ficheiros guardados na Documentação.`, { registo: false });
+    registar('info', `Documentação: ${itens.length} ficheiro(s) juntado(s) em "${at.nome}"${raizNome ? ` (pasta "${raizNome}")` : ''}${saltados ? `; ${saltados} já lá estava(m)` : ''}.`);
+    aviso(`${itens.length} ficheiro${itens.length === 1 ? '' : 's'} guardado${itens.length === 1 ? '' : 's'}${saltados ? `, ${saltados} já lá estava${saltados === 1 ? '' : 'm'}` : ''}${movidos ? `, ${movidos} versão(ões) antiga(s) arrumada(s)` : ''}.`, { registo: false });
   } catch (e) { tratarErroDrive(e); }
+  barraDocs(null);
   $('#docs-acoes').classList.remove('ocupado');
   desenharDocs();
 }
