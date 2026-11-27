@@ -1,6 +1,6 @@
 // drive.js — Google Drive (só a permissão drive.file: o Portal vê apenas o que ele próprio cria)
 
-export const V = '1.4';
+export const V = '1.5';
 export const ESCOPO = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
@@ -182,6 +182,7 @@ export async function mudarConteudo(id, blob, tipo) {
 }
 
 export async function lerJSON(id) { return json(`${API}/files/${id}?alt=media`); }
+export async function lerBlob(id) { return (await pedido(`${API}/files/${id}?alt=media`)).blob(); }
 
 export async function escreverJSON(nome, pai, obj) {
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });

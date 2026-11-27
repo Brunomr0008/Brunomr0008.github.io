@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f4f4b">
 <meta name="color-scheme" content="light dark">
-<meta name="portal-versao" content="1.4">
+<meta name="portal-versao" content="1.5">
 <script>try{document.documentElement.dataset.tema=localStorage.getItem('portal:tema')||'original'}catch(e){document.documentElement.dataset.tema='original'}</script>
 <title>Portal</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -27,6 +27,10 @@
     <h2>A atualizar o Portal…</h2>
     <div class="barra-ind"><div></div></div>
     <p class="suave" id="a-atualizar-txt">Não feches esta janela. Demora só uns segundos.</p>
+    <div class="linha-btns centro" id="a-atualizar-btns" hidden>
+      <button class="btn primario" type="button" id="a-tentar">Tentar outra vez</button>
+      <button class="btn texto" type="button" id="a-continuar" hidden>Continuar sem atualizar</button>
+    </div>
   </div>
 </div>
 
@@ -85,6 +89,9 @@
     <span class="ligacao" data-ligacao></span>
     <button id="estado" class="estado" type="button"></button>
     <button id="btn-instalar" class="btn pequeno" type="button" hidden>Instalar</button>
+    <button id="btn-docs" class="icone-btn" type="button" title="Documentação" aria-label="Documentação">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM7 12v1.6h10V12H7Zm0 3.5v1.6h10v-1.6H7Zm0-7V10h5V8.5H7Z"/></svg>
+    </button>
     <button id="btn-def" class="icone-btn" type="button" title="Definições" aria-label="Definições">
       <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Zm7.4-2.5a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.8 1.7 1l.4 2.5h4l.4-2.5c.6-.2 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6Z"/></svg>
     </button>
@@ -108,7 +115,7 @@
     <button id="estado-app" class="estado mini" type="button"></button>
   </div>
   <iframe id="moldura" title="App"
-    allow="microphone; camera; fullscreen; autoplay; clipboard-read; clipboard-write; display-capture; screen-wake-lock"></iframe>
+    allow="microphone; camera; fullscreen; autoplay; clipboard-read; clipboard-write; display-capture; screen-wake-lock; web-share"></iframe>
 </section>
 
 <!-- ============ Bloqueio ============ -->
@@ -306,6 +313,50 @@
   </div>
 </dialog>
 
+<!-- ============ Documentação (no Drive, atrás do PIN) ============ -->
+<dialog id="dlg-docs" class="dialogo def">
+  <div class="docs">
+    <header class="docs-topo">
+      <button type="button" class="voltar-def btn texto" id="docs-voltar">← Voltar</button>
+      <h2>Documentação</h2>
+    </header>
+    <nav class="docs-caminho" id="docs-caminho" aria-label="Pasta atual"></nav>
+    <p class="suave curto" id="docs-info"></p>
+    <ul class="docs-lista" id="docs-lista"></ul>
+    <div class="linha-btns" id="docs-acoes">
+      <button class="btn primario" type="button" id="docs-juntar">+ Juntar ficheiros</button>
+      <button class="btn" type="button" id="docs-pasta">+ Pasta</button>
+      <a class="btn texto" id="docs-drive" target="_blank" rel="noopener">Abrir no Drive</a>
+      <input type="file" id="docs-in" multiple hidden>
+    </div>
+    <div class="docs-ver" id="docs-ver" hidden>
+      <div class="docs-ver-topo">
+        <b id="docs-ver-nome"></b>
+        <span class="espaco"></span>
+        <a class="btn pequeno" id="docs-ver-desc">Descarregar</a>
+        <button class="btn pequeno texto" type="button" id="docs-ver-fechar">Fechar</button>
+      </div>
+      <pre id="docs-ver-texto" hidden></pre>
+      <iframe id="docs-ver-quadro" title="Documento" hidden></iframe>
+      <p id="docs-ver-outro" class="suave" hidden>Este tipo de ficheiro não se pode ver aqui. Usa "Descarregar".</p>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ Pedir o PIN outra vez ============ -->
+<dialog id="dlg-pin2" class="dialogo">
+  <form class="dlg-corpo" id="form-pin2">
+    <h2>PIN do Portal</h2>
+    <p class="suave" id="pin2-texto">A Documentação está protegida. Escreve o PIN outra vez.</p>
+    <input id="pin2" type="password" autocomplete="current-password" placeholder="PIN ou palavra-passe">
+    <p class="erro" id="erro-pin2"></p>
+    <div class="linha-btns fim">
+      <button class="btn texto" type="button" id="pin2-cancelar">Cancelar</button>
+      <button class="btn primario" type="submit">Entrar</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- ============ Confirmação genérica ============ -->
 <dialog id="dlg-conf" class="dialogo">
   <form method="dialog" class="dlg-corpo">
@@ -321,6 +372,7 @@
 <div id="avisos" class="avisos" aria-live="polite"></div>
 
 <script src="/vendor/jszip.min.js"></script>
+<script src="/js/gavetabd.js"></script>
 <script type="module" src="/js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 /* Portal — estilos */
 :root{
-  --portal-versao:"1.4";
+  --portal-versao:"1.5";
   --raio:16px;
   font-family:"Segoe UI",Roboto,"Helvetica Neue",system-ui,sans-serif;
   color:var(--tinta); background:var(--fundo);
@@ -228,3 +228,26 @@ details summary{cursor:pointer;color:var(--suave);font-size:.9rem;margin:.4rem 0
 
 #form-entrar input{margin:.6rem 0 .2rem}
 .bloqueio-online{position:fixed;inset:auto 0 0 0;z-index:40;background:var(--erro);color:#fff;padding:.6rem 1rem;text-align:center;font-size:.9rem}
+
+/* ---- Documentação (1.5) ---- */
+.docs{display:flex;flex-direction:column;height:100%;padding:1rem 1.4rem;gap:.5rem;max-width:960px;margin:0 auto;width:100%;box-sizing:border-box}
+.docs-topo{display:flex;align-items:center;gap:.8rem}
+.docs-topo h2{margin:0}
+.docs-caminho{display:flex;flex-wrap:wrap;gap:.2rem;align-items:center;font-size:.95rem}
+.docs-caminho button{font:inherit;border:0;background:none;color:var(--acento);cursor:pointer;padding:.2rem .35rem;border-radius:6px}
+.docs-caminho button:hover{background:var(--fundo2)}
+.docs-caminho b{padding:.2rem .35rem}
+.docs-lista{list-style:none;margin:0;padding:0;overflow:auto;flex:1;border-top:1px solid var(--borda)}
+.docs-lista li{display:flex;align-items:center;gap:.6rem;border-bottom:1px solid var(--borda);padding:.15rem 0}
+.docs-lista li>button.abrir{flex:1;display:flex;align-items:center;gap:.6rem;font:inherit;text-align:left;border:0;background:none;color:var(--tinta);padding:.55rem .4rem;cursor:pointer;border-radius:8px;min-width:0}
+.docs-lista li>button.abrir:hover{background:var(--fundo2)}
+.docs-lista .ic{width:1.6rem;text-align:center;flex:none}
+.docs-lista .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docs-lista small{color:var(--suave);white-space:nowrap}
+.docs-ver{position:fixed;inset:0;background:var(--fundo);display:flex;flex-direction:column;z-index:5}
+.docs-ver[hidden]{display:none}
+.docs-ver-topo{display:flex;align-items:center;gap:.5rem;padding:.6rem 1rem;border-bottom:1px solid var(--borda);background:var(--cartao)}
+.docs-ver-topo .espaco{flex:1}
+.docs-ver pre{flex:1;margin:0;padding:1rem 1.4rem;overflow:auto;white-space:pre-wrap;font-size:.92rem;line-height:1.5;color:var(--tinta)}
+.docs-ver iframe{flex:1;border:0;width:100%;background:#fff}
+.linha-btns.centro{justify-content:center}

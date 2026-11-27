@@ -1,11 +1,13 @@
 // sw.js — service worker do Portal
 // Serve o Portal e os programas das apps a partir do aparelho, para funcionar sem internet.
 // IMPORTANTE: sempre que mudares algum ficheiro do Portal, muda VERSAO para os aparelhos receberem a atualização.
-const VERSAO = '1.4';
+importScripts('/js/gavetabd.js');   // a base de dados das apps (para servir /_blob/)
+const VERSAO = '1.5';
 const CASCA = 'casca-' + VERSAO;
 const CASCA_FICHEIROS = [
   '/', '/index.html', '/config.js', '/manifest.webmanifest', '/css/portal.css',
   '/js/main.js', '/js/armazem.js', '/js/cofre.js', '/js/drive.js', '/js/apps.js',
+  '/js/dados.js', '/js/gavetabd.js', '/js/gaveta.js',
   '/vendor/jszip.min.js',
   '/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png',
 ];
@@ -36,7 +38,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith('/a/')) return e.respondWith(servirApp(req, url));
-    if (url.pathname.startsWith('/_blob/')) return e.respondWith(servirBlob(req, url));
+    if (url.pathname.startsWith('/_blob/')) return e.respondWith(servirBlob(e, url));
     return e.respondWith(servirCasca(req, url));
   }
   if (CDN.has(url.hostname)) return e.respondWith(servirCDN(req));
@@ -52,6 +54,11 @@ async function servirCasca(req, url) {
       if (r.ok) { c.put('/config.js', r.clone()); return r; }
     } catch (e) {}
     return (await c.match('/config.js')) || new Response('window.PORTAL_CONFIG={}', { headers: { 'Content-Type': 'text/javascript' } });
+  }
+  // versao.json: sempre da internet (é assim que o Portal sabe se há versão nova)
+  if (url.pathname === '/versao.json') {
+    try { return await fetch(req, { cache: 'no-store' }); }
+    catch (e) { return new Response('{}', { status: 504, headers: { 'Content-Type': 'application/json' } }); }
   }
   if (req.mode === 'navigate') {
     return (await c.match('/index.html')) || fetch(req);
@@ -93,13 +100,62 @@ async function servirApp(req, url) {
   if (caminho.endsWith('/')) caminho += 'index.html';
   const r = await c.match(new URL(caminho, url.origin).href, { ignoreSearch: true });
   if (!r) return pagina('Ficheiro em falta', 'A app pediu um ficheiro que não está no programa: ' + decodeURIComponent(m[2]));
-  // (Fase 2: aqui o Portal vai juntar a "gaveta" window.claude ao index.html antes de a app arrancar.)
+  // Páginas da app: junta a "gaveta" (window.claude) antes do código da app
+  if ((r.headers.get('Content-Type') || '').includes('text/html')) return juntarGaveta(r);
   return r;
 }
 
-async function servirBlob(req, url) {
-  // Fase 2: ficheiros das apps (assets) servidos a partir do aparelho.
-  return pagina('Ainda não disponível', 'Os ficheiros das apps (/_blob/) chegam na fase 2.');
+const GAVETA = '<script src="/js/gavetabd.js"></script><script src="/js/gaveta.js"></script>';
+async function juntarGaveta(r) {
+  let html = await r.text();
+  const cab = html.match(/<head(\s[^>]*)?>/i);
+  if (cab) {
+    // depois do <meta charset> (se estiver logo no início), senão logo a seguir ao <head>
+    let pos = cab.index + cab[0].length;
+    const cs = html.slice(pos, pos + 600).match(/^\s*<meta\s+charset[^>]*>/i);
+    if (cs) pos += cs[0].length;
+    html = html.slice(0, pos) + GAVETA + html.slice(pos);
+  } else {
+    const h = html.match(/<html[^>]*>/i);
+    const pos = h ? h.index + h[0].length : (html.match(/^\s*<!doctype[^>]*>/i)?.[0].length || 0);
+    html = html.slice(0, pos) + GAVETA + html.slice(pos);
+  }
+  const cab2 = new Headers(r.headers);
+  cab2.delete('Content-Length');
+  cab2.set('Content-Type', 'text/html; charset=utf-8');
+  cab2.set('Cache-Control', 'no-store');
+  return new Response(html, { status: 200, headers: cab2 });
+}
+
+// De que app vem o pedido? (pelo endereço da página que o fez)
+async function appDoPedido(e) {
+  const de = s => { try { const m = new URL(s).pathname.match(/^\/a\/([^/]+)\//); return m ? decodeURIComponent(m[1]) : null; } catch (x) { return null; } };
+  let app = e.request.referrer ? de(e.request.referrer) : null;
+  if (!app && e.clientId) { const c = await self.clients.get(e.clientId); if (c) app = de(c.url); }
+  return app;
+}
+
+// Ficheiros das apps (assets), servidos a partir deste aparelho, também sem internet
+async function servirBlob(e, url) {
+  const id = decodeURIComponent(url.pathname.slice('/_blob/'.length).split('/')[0]);
+  const app = await appDoPedido(e);
+  let f = null;
+  try {
+    const l = await GavetaBD.todosPorIndice('ficheiros', 'id', id);
+    f = l.find(x => !x.apagado && x.blob && (!app || x.app === app)) || null;
+  } catch (x) {}
+  if (!f) return pagina('Ficheiro não encontrado', 'Este ficheiro não está neste aparelho.');
+  const blob = f.blob, tipo = f.tipo || blob.type || 'application/octet-stream';
+  const base = { 'Content-Type': tipo, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' };
+  const rg = (e.request.headers.get('Range') || '').match(/^bytes=(\d*)-(\d*)$/);
+  if (rg && (rg[1] || rg[2])) {
+    let ini, fimB;
+    if (rg[1]) { ini = +rg[1]; fimB = rg[2] ? Math.min(+rg[2], blob.size - 1) : blob.size - 1; }
+    else { ini = Math.max(0, blob.size - +rg[2]); fimB = blob.size - 1; }
+    if (ini >= blob.size || ini > fimB) return new Response('', { status: 416, headers: { 'Content-Range': `bytes */${blob.size}` } });
+    return new Response(blob.slice(ini, fimB + 1), { status: 206, headers: { ...base, 'Content-Length': String(fimB - ini + 1), 'Content-Range': `bytes ${ini}-${fimB}/${blob.size}` } });
+  }
+  return new Response(blob, { status: 200, headers: { ...base, 'Content-Length': String(blob.size) } });
 }
 
 async function servirCDN(req) {
