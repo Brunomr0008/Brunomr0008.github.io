@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f4f4b">
 <meta name="color-scheme" content="light dark">
-<meta name="portal-versao" content="1.8">
+<meta name="portal-versao" content="1.9">
 <script>try{document.documentElement.dataset.tema=localStorage.getItem('portal:tema')||'original'}catch(e){document.documentElement.dataset.tema='original'}</script>
 <title>Portal</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -106,6 +106,11 @@
   </header>
   <main class="conteudo">
     <div id="grelha" class="grelha"></div>
+    <section id="no-drive" class="no-drive" hidden>
+      <h3>No Drive, ainda não neste aparelho</h3>
+      <p class="suave curto">Apps que juntaste noutro aparelho. Transfere as que quiseres usar aqui.</p>
+      <div id="grelha-drive" class="grelha"></div>
+    </section>
     <div id="vazio" class="vazio" hidden>
       <p><b>Ainda não há apps neste aparelho.</b></p>
       <p class="suave">Junta a primeira com o botão "+ Juntar app".</p>
@@ -201,8 +206,10 @@
       <button class="btn primario largo destaque" type="button" id="m-atualizar">⟳ Atualizar para uma versão nova</button>
       <button class="btn largo" type="button" id="m-editar">✎ Editar nome e descrição</button>
       <button class="btn largo" type="button" id="m-enviar" hidden>↑ Enviar para o Drive</button>
+      <button class="btn largo" type="button" id="m-versoes" hidden>Versão ativa neste aparelho…</button>
       <a class="btn largo" id="m-drive" target="_blank" rel="noopener" hidden>Ver no Google Drive</a>
       <button class="btn largo perigo" type="button" id="m-apagar">Apagar deste aparelho</button>
+      <button class="btn largo perigo forte" type="button" id="m-eliminar">Eliminar de vez (também no Drive)…</button>
     </div>
     <div id="m-editar-form" class="sub" hidden>
       <label><span>Nome</span><input id="e-nome" maxlength="60"></label>
@@ -211,6 +218,38 @@
       <div class="linha-btns"><button class="btn primario" type="button" id="e-guardar">Guardar</button><button class="btn texto" type="button" id="e-cancelar">Cancelar</button></div>
     </div>
     <div class="linha-btns fim"><button class="btn texto" value="fechar">Fechar</button></div>
+  </form>
+</dialog>
+
+<!-- ============ Versões de uma app (fase 4) ============ -->
+<dialog id="dlg-versoes" class="dialogo">
+  <form method="dialog" class="dlg-corpo">
+    <h2 id="v-titulo">Versões</h2>
+    <p class="suave" id="v-texto">Cada aparelho escolhe a versão que usa. Os dados da app não mudam.</p>
+    <ul class="lista-simples" id="v-lista"></ul>
+    <div class="linha-btns fim"><button class="btn texto" value="fechar">Fechar</button></div>
+  </form>
+</dialog>
+
+<!-- ============ Eliminar uma app de vez (também no Drive) ============ -->
+<dialog id="dlg-eliminar" class="dialogo">
+  <form class="dlg-corpo" id="form-eliminar" autocomplete="off">
+    <h2 id="el-titulo">Eliminar de vez</h2>
+    <div class="caixa-aviso" id="el-texto"></div>
+    <label><span id="el-rot-nome">Escreve o nome da app para confirmar</span><input id="el-nome" autocomplete="off"></label>
+    <div id="el-criar" hidden>
+      <p class="suave curto">Primeira vez: cria a <b>palavra-passe de eliminação</b> (mínimo 6 caracteres, diferente do PIN). Vai ser pedida sempre que eliminares uma app de vez, em qualquer aparelho.</p>
+      <label><span>Palavra-passe de eliminação</span><input id="el-p1" type="password" autocomplete="new-password"></label>
+      <label><span>Repete</span><input id="el-p2" type="password" autocomplete="new-password"></label>
+    </div>
+    <div id="el-entrar" hidden>
+      <label><span>Palavra-passe de eliminação</span><input id="el-p" type="password" autocomplete="off"></label>
+    </div>
+    <p class="erro" id="erro-eliminar"></p>
+    <div class="linha-btns fim">
+      <button class="btn texto" type="button" id="el-cancelar">Cancelar</button>
+      <button class="btn primario perigo-forte" type="submit" id="el-ok">Eliminar de vez</button>
+    </div>
   </form>
 </dialog>
 

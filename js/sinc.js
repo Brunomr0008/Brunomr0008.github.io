@@ -4,7 +4,7 @@
 // Conflitos (o mesmo registo mudado em dois aparelhos): fica a alteração mais recente, e o Portal avisa.
 import * as Drive from './drive.js';
 
-export const V = '1.8';
+export const V = '1.9';
 const BD = () => self.GavetaBD;
 const PASTA = 'application/vnd.google-apps.folder';
 const PARALELO = 6;
@@ -246,4 +246,16 @@ export async function descarregarFicheiros({ sinal, progresso } = {}) {
     progresso?.(feito, total);
   }
   return { n, bytes: feito };
+}
+
+// Nome legível de um ficheiro: o que a app lhe deu, ou o do registo que aponta para ele (ex.: o item "Haydn" da biblioteca)
+export async function nomeDoFicheiro(app, id) {
+  const d = await BD().abrir();
+  const f = await BD().req(d.transaction('ficheiros').objectStore('ficheiros').get([app, id]));
+  if (f?.nome) return f.nome;
+  for (const r of await BD().todosPorIndice('docs', 'app', app)) {
+    if (r.apagado || !r.dados) continue;
+    if (Object.values(r.dados).includes(id)) { const n = r.dados.name || r.dados.nome || r.dados.title || r.dados.titulo; if (n) return n; }
+  }
+  return null;
 }

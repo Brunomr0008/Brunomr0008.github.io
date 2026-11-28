@@ -1,6 +1,6 @@
 // drive.js — Google Drive (só a permissão drive.file: o Portal vê apenas o que ele próprio cria)
 
-export const V = '1.8';
+export const V = '1.9';
 export const ESCOPO = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3';
 const UP = 'https://www.googleapis.com/upload/drive/v3';
@@ -351,6 +351,7 @@ export async function enviarPrograma(raiz, app, lerFicheiro, progresso, aparelho
     if (f.mimeType !== PASTA) continue;
     if (f.name.endsWith(SUFIXO_TEMP)) { if (f.name === nomeTemp && !temp) temp = f.id; else await paraOLixo(f.id); continue; }
     const n = numV(f.name);
+    if (n === app.versao) { const e = erro('versao_existe', `A versão ${app.versao} desta app já existe no Drive (vinda de outro aparelho).`); throw e; }
     if (n < app.versao && n > vAnt) { vAnt = n; anterior = f.id; }
   }
   if (!temp) temp = await criarPasta(nomeTemp, versoes);

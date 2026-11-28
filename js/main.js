@@ -5,13 +5,16 @@ import * as Drive from './drive.js';
 import * as Apps from './apps.js';
 import * as Dados from './dados.js';
 import * as Sinc from './sinc.js';
+import * as Loja from './loja.js';
 
-const VERSAO = '1.8';
-const VERSAO_PORTAL = 'Portal 1.8 · 27/11/2026';
+const VERSAO = '1.9';
+const VERSAO_PORTAL = 'Portal 1.9 · 28/11/2026';
 // Versão que cada ficheiro deve ter nesta versão do Portal (para detetar atualizações incompletas)
-const ESPERADO = { 'index.html': '1.8', 'css/portal.css': '1.8', 'js/main.js': '1.8', 'js/cofre.js': '1.4', 'js/drive.js': '1.8', 'js/apps.js': '1.3', 'js/dados.js': '1.8', 'js/sinc.js': '1.8', 'js/gavetabd.js': '1.5', 'js/gaveta.js': '1.5', 'sw.js': '1.8' };
+const ESPERADO = { 'index.html': '1.9', 'css/portal.css': '1.9', 'js/main.js': '1.9', 'js/cofre.js': '1.4', 'js/drive.js': '1.9', 'js/apps.js': '1.3', 'js/dados.js': '1.9', 'js/sinc.js': '1.9', 'js/loja.js': '1.9', 'js/gavetabd.js': '1.5', 'js/gaveta.js': '1.5', 'sw.js': '1.9' };
 // Novidades: título em inglês (máx. 40 caracteres) e descrição em português
 const NOVIDADES = [
+  { v: '1.9', data: '28/11/2026', titulo: 'Phase 4: apps on other devices',
+    texto: 'Fase 4: o Portal vê as apps que estão no Drive. Uma app juntada noutro aparelho aparece em "No Drive, ainda não neste aparelho", com o botão Transferir; uma versão nova aparece no cartão da app ("↓ versão N"), e o Portal pergunta sempre antes de transferir. Cada aparelho escolhe a versão ativa de cada app (menu ⋯). Eliminar de vez (também no Drive), protegido por uma palavra-passe de eliminação; vai para o lixo do Drive (30 dias). Se uma app desaparecer do Drive, o Portal pergunta se a apagas também deste aparelho. Ao desbloquear, o Portal volta ao ecrã principal. PDFs abertos no browser: o nome certo no histórico e não voltam a ser transferidos na mesma sessão. "Este aparelho" mostra só o que está mesmo guardado no aparelho.' },
   { v: '1.8', data: '27/11/2026', titulo: 'Phase 3: sync between devices',
     texto: 'Fase 3: o Portal passa a receber do Drive o que mudou noutros aparelhos (só as diferenças), ao entrar, de 30 em 30 segundos e em "Sincronizar agora"; as apps abertas veem as mudanças logo. Conflitos: se o mesmo registo mudou em dois aparelhos, fica o mais recente e aparece um aviso. No browser (sem instalar), os dados deixam de ficar guardados: vêm do Drive em cada sessão, e os PDFs só quando os abres. Instalado, guarda tudo para funcionar sem internet. Aviso ao sair de uma app com alterações por enviar. Histórico das transferências. Versão nova do Portal: verifica a cada ação e de 5 em 5 minutos; quando há, avisa 5 segundos, bloqueia e volta ao ecrã principal com a versão nova. Documentação: a pasta "Guias - últimas versões" tem sempre a versão mais recente de cada guia; as pastas que juntas ficam como estão.' },
   { v: '1.7', data: '27/11/2026', titulo: 'Fast update checks, tidy guides',
@@ -42,6 +45,7 @@ const E = {
   escondidoEm: 0, bloquearMin: 5, raiz: null, email: null, aparelho: null, instalar: null,
   online: navigator.onLine, pausado: false, controlo: null, forcarRecarga: false, secAtual: 'drive',
   dadosPend: {}, aProcessar: false, aReceber: null, dadosProntos: false, limpo: false,
+  loja: [], lojaEm: 0, perguntados: new Set(),
 };
 
 /* ================= utilidades ================= */
@@ -132,6 +136,7 @@ async function versoesFicheiros() {
     'js/apps.js': Apps.V || '?',
     'js/dados.js': Dados.V || '?',
     'js/sinc.js': Sinc.V || '?',
+    'js/loja.js': Loja.V || '?',
     'js/gavetabd.js': self.GavetaBD?.V || '?',
     'js/gaveta.js': await versaoDoTexto('/js/gaveta.js'),
     'sw.js': await versaoSW(),
@@ -392,6 +397,7 @@ async function sincronizarPin(forcarEnvio = false) {
     if (!remoto || forcarEnvio || (loc.sinc && loc.em > loc.sinc && loc.em > (remoto.mudadoEm || 0))) {
       const meu = await Cofre.exportar();
       meu.mudadoPor = E.aparelho;
+      if (remoto?.eliminar) meu.eliminar = remoto.eliminar;   // mantém a palavra-passe de eliminação
       await Drive.escreverSeguranca(E.raiz, meu);
       await Cofre.marcarSinc(meu.mudadoEm);
       registar('info', remoto ? 'PIN único atualizado no Drive.' : 'PIN deste aparelho guardado no Drive como PIN único.');
@@ -497,6 +503,9 @@ $('#btn-esqueci').onclick = async () => {
   if (ok) { await reporTudo(); location.replace('/'); }
 };
 function desbloquear() {
+  // ao desbloquear, volta sempre ao ecrã principal do Portal
+  if (E.appAberta) fecharApp();
+  if ($('#dlg-def').open) fecharDefinicoes();
   E.desbloqueado = true;
   $('#ecra-bloqueio').hidden = true;
   $('#moldura').inert = false;
@@ -564,13 +573,101 @@ async function atualizarApps() {
     else if (app.naoEnviado) { chip.className = 'chip'; chip.textContent = 'só neste aparelho'; }
     else { chip.className = 'chip ok'; chip.textContent = '✓ instalada'; }
     b.append(ic, nome, info, chip);
+    const noDrive = E.loja.find(x => x.id === app.id);
+    if (noDrive && noDrive.versao > (app.versao || 0) && !pend.has(app.id)) {
+      const nova = document.createElement('span'); nova.className = 'chip nova'; nova.textContent = `↓ versão ${noDrive.versao} no Drive`;
+      nova.title = 'Há uma versão mais recente desta app no Drive';
+      nova.onclick = ev => { ev.stopPropagation(); transferirDaDrive(noDrive, noDrive.versao, app); };
+      b.appendChild(nova);
+    }
     b.onclick = () => abrirApp(app.id);
     const mais = document.createElement('button'); mais.className = 'mais'; mais.type = 'button'; mais.textContent = '⋯'; mais.title = 'Opções'; mais.setAttribute('aria-label', 'Opções de ' + app.nome);
     mais.onclick = () => menuApp(app);
     art.append(b, mais);
     g.appendChild(art);
   }
+  desenharLoja();
   atualizarEstado();
+}
+// Fase 4: apps que estão no Drive e ainda não neste aparelho
+function desenharLoja() {
+  const g = $('#grelha-drive'); g.textContent = '';
+  const novas = E.loja.filter(x => !E.apps.some(a => a.id === x.id));
+  $('#no-drive').hidden = !novas.length;
+  if (novas.length) $('#vazio').hidden = true;
+  for (const x of novas) {
+    const art = document.createElement('article'); art.className = 'cartao drive';
+    const b = document.createElement('button'); b.className = 'abrir'; b.type = 'button';
+    const ic = document.createElement('div'); ic.className = 'icone-app'; iconeEl({ id: x.id, nome: x.nome }, ic);
+    const nome = document.createElement('b'); nome.textContent = x.nome;
+    const info = document.createElement('small'); info.textContent = `versão ${x.versao} · ${tam(x.tamanho)}`;
+    const chip = document.createElement('span'); chip.className = 'chip nova'; chip.textContent = '↓ Transferir';
+    b.append(ic, nome, info, chip);
+    b.onclick = () => transferirDaDrive(x, x.versao, null);
+    art.appendChild(b); g.appendChild(art);
+  }
+}
+// Lê a lista de apps do Drive (no máximo de 2 em 2 minutos, ou quando pedido)
+async function verLoja(forcar = false) {
+  if (!E.online || !Drive.temToken() || !E.raiz) return;
+  if (!forcar && Date.now() - E.lojaEm < 120000) return;
+  let lista;
+  try { lista = await Loja.listar(await garantirRaiz()); } catch (e) { if (e.code === 'sem_token' || e.code === 'rede') return; throw e; }
+  const novasAntes = new Set(E.loja.map(x => x.id));
+  E.loja = lista; E.lojaEm = Date.now();
+  const novas = lista.filter(x => !E.apps.some(a => a.id === x.id) && !novasAntes.has(x.id) && !E.perguntados.has('nova:' + x.id));
+  for (const x of novas) E.perguntados.add('nova:' + x.id);
+  if (novas.length) {
+    registar('info', `No Drive há ${novas.length === 1 ? 'uma app que não está' : novas.length + ' apps que não estão'} neste aparelho: ${novas.map(x => x.nome).join(', ')}.`);
+    aviso(novas.length === 1 ? `Há uma app no Drive que não está neste aparelho: ${novas[0].nome}.` : `Há ${novas.length} apps no Drive que não estão neste aparelho.`, { ms: 9000, registo: false });
+  }
+  // apps que estavam no Drive e desapareceram (eliminadas noutro aparelho ou à mão no Drive)
+  const fila = await A.todos('fila');
+  for (const app of E.apps) {
+    if (!app.drive?.pasta || lista.some(x => x.id === app.id) || fila.some(f => f.valor.id === app.id)) continue;
+    if (E.perguntados.has('apagada:' + app.id)) continue;
+    E.perguntados.add('apagada:' + app.id);
+    registar('aviso', `"${app.nome}" já não está no Drive.`);
+    const ok = await confirmar(`“${app.nome}” já não está no Drive`,
+      'Foi eliminada noutro aparelho, ou a pasta foi apagada no Drive (se foi há menos de 30 dias, ainda está no lixo do Drive). Apagar também deste aparelho? Se escolheres Cancelar, fica só neste aparelho.',
+      { sim: 'Apagar deste aparelho', perigo: true });
+    if (ok) await apagarLocal(app, 'já não estava no Drive');
+    else { const a = await Apps.obter(app.id); if (a) { delete a.drive; a.naoEnviado = true; await Apps.guardarMeta(a); } registar('info', `"${app.nome}" fica só neste aparelho.`); }
+  }
+  await atualizarApps();
+}
+async function apagarLocal(app, motivo) {
+  await Apps.apagarDoAparelho(app.id);
+  await A.apagar('fila', 'meta:' + app.id);
+  await Dados.apagarApp(app.id).catch(() => {});
+  limparLocalStorage('app:' + app.id + ':');
+  registar('aviso', `App "${app.nome}" apagada deste aparelho${motivo ? ' (' + motivo + ')' : ''}.`);
+}
+// Transferir uma app (ou outra versão) do Drive para este aparelho; pergunta sempre antes
+async function transferirDaDrive(x, versao, local) {
+  if (aplicarBloqueioVersao()) return;
+  if (!E.online || !Drive.temToken()) { aviso('Para transferir do Drive é preciso internet e ligar ao Drive.', { erro: true, acao: { texto: 'Ligar', fn: async () => { if (await ligarGoogle()) processarFila(); } } }); return; }
+  const titulo = !local ? `Transferir “${x.nome}”?` : versao > (local.versao || 0) ? `Atualizar “${x.nome}” para a versão ${versao}?` : `Usar a versão ${versao} de “${x.nome}”?`;
+  const texto = !local ? `Versão ${versao} · cerca de ${tam(x.tamanho)}. Fica neste aparelho; os dados da app vêm do Drive.`
+    : `Neste aparelho tens a versão ${local.versao}. Os dados da app não mudam.`;
+  if (!(await confirmar(titulo, texto, { sim: local ? 'Mudar' : 'Transferir' }))) return;
+  if (E.aEnviar || E.aReceber) { aviso('Espera que acabe a transferência que está a decorrer.', { erro: true }); return; }
+  const inicio = Date.now();
+  E.aReceber = { feito: 0, total: x.tamanho || 0, inicio };
+  atualizarEstado();
+  try {
+    const r = await Loja.instalar(x, versao, { local, progresso: (feito, total) => { E.aReceber = { feito, total, inicio }; atualizarEstado(); } });
+    if (local && versao < x.versao) { r.meta.versaoFixada = versao; await Apps.guardarMeta(r.meta); }
+    registar('info', `${local ? 'Versão ' + versao + ' de' : 'Transferida do Drive:'} "${x.nome}"${local ? ' instalada neste aparelho' : ' (versão ' + versao + ')'}.`);
+    historicoTransf({ dir: 'down', o: `${x.nome}: programa, versão ${versao}`, bytes: r.bytes, ms: Date.now() - inicio, ok: true });
+    aviso(local ? `“${x.nome}”: versão ${versao} neste aparelho.` : `“${x.nome}” transferida. Os dados vêm do Drive.`, { registo: false });
+  } catch (e) {
+    historicoTransf({ dir: 'down', o: `${x.nome}: programa, versão ${versao}`, bytes: E.aReceber?.feito || 0, ms: Date.now() - inicio, ok: false, erro: e.message });
+    tratarErroDrive(e);
+  } finally { E.aReceber = null; }
+  await atualizarApps();
+  E.dadosProntos = instalado();   // a app nova precisa dos dados dela
+  processarFila();
 }
 
 /* ================= estado da sincronização ================= */
@@ -665,6 +762,7 @@ async function processarFila(manual = false) {
     // 1.º receber o que mudou noutros aparelhos (assim os conflitos resolvem-se antes de enviar)
     { const r = await receberDados(); if (r === false) falhou = true; else if (r) mudou = true; }
     if (falhou) return;
+    await verLoja(manual).catch(() => {});
     for (const { chave, valor } of fila) {
       if (E.pausado) break;
       E.controlo = new AbortController();
@@ -691,6 +789,12 @@ async function processarFila(manual = false) {
           mudou = true;
         }
       } catch (e) {
+        if (e.code === 'versao_existe') {
+          // outro aparelho já enviou uma versão com este número: esta passa a ser a seguinte (nada é escrito por cima)
+          E.aEnviar = null; E.controlo = null;
+          try { const novo = await renumerar(valor.id); registar('aviso', `${e.message} Esta passou a ser a versão ${novo}.`); mudou = true; continue; }
+          catch (x) { tratarErroDrive(x); falhou = true; break; }
+        }
         falhou = true;
         if (E.aEnviar && E.aEnviar.id !== 'dados') historicoTransf({ dir: 'up', o: `${E.aEnviar.nome}: programa`, bytes: E.aEnviar.feito, ms: Date.now() - E.aEnviar.inicio, ok: false, erro: e.code === 'cancelado' ? 'parado' : e.message });
         if (e.code === 'cancelado') registar('info', 'Envio interrompido. Continua onde parou na próxima vez.');
@@ -757,17 +861,25 @@ async function descarregarEmFundo() {
     historicoTransf({ dir: 'down', o: 'Ficheiros para usar sem internet', bytes: 0, ms: Date.now() - inicio, ok: false, erro: e.message });
   } finally { aDescarregar = false; E.aReceber = null; atualizarEstado(); }
 }
-// O service worker pede o conteúdo de um ficheiro que está só no Drive (a app abriu um PDF)
+// O service worker pede o conteúdo de um ficheiro que está só no Drive (a app abriu ou mostrou um PDF).
+// No browser fica só na memória desta sessão (não volta a ser transferido até recarregares; não fica no aparelho).
+const memoriaBlobs = new Map(); let memoriaBytes = 0;
 navigator.serviceWorker?.addEventListener('message', async ev => {
   const d = ev.data || {}, porta = ev.ports?.[0];
   if (d.tipo !== 'blob' || !porta) return;
   const inicio = Date.now();
   try {
     if (!E.desbloqueado) throw Object.assign(new Error('O Portal está bloqueado.'), { code: 'bloqueado' });
+    const ja = memoriaBlobs.get(d.driveId);
+    if (ja) { porta.postMessage({ blob: ja }); return; }
     if (!Drive.temToken()) throw Object.assign(new Error('Sem acesso ao Drive.'), { code: 'sem_token' });
     const b = await Drive.lerBlob(d.driveId);
     porta.postMessage({ blob: b });
-    historicoTransf({ dir: 'down', o: `Ficheiro aberto: ${d.nome || d.id}`, bytes: b.size, ms: Date.now() - inicio, ok: true });
+    memoriaBlobs.set(d.driveId, b); memoriaBytes += b.size;
+    for (const [k, v] of memoriaBlobs) { if (memoriaBytes <= 300 * 1024 * 1024) break; memoriaBlobs.delete(k); memoriaBytes -= v.size; }
+    const nome = d.nome || await Sinc.nomeDoFicheiro(d.app, d.id).catch(() => null) || 'ficheiro sem nome';
+    const app = E.apps.find(a => a.id === d.app);
+    historicoTransf({ dir: 'down', o: `${app ? app.nome + ': ' : ''}PDF/ficheiro que a app abriu ou mostrou: ${nome}`, bytes: b.size, ms: Date.now() - inicio, ok: true });
     if (instalado()) Sinc.guardarBlob(d.app, d.id, b).catch(() => {});
   } catch (e) {
     porta.postMessage({ erro: e.code || e.message });
@@ -824,6 +936,19 @@ try {
     tDados = setTimeout(() => { if (E.desbloqueado) processarFila(); }, 4000);
   };
 } catch (e) {}
+// Uma versão local que colide com uma que já está no Drive passa a ser a seguinte à mais alta do Drive
+async function renumerar(id) {
+  E.loja = await Loja.listar(await garantirRaiz()); E.lojaEm = Date.now();
+  const app = await Apps.obter(id);
+  const d = E.loja.find(x => x.id === id);
+  const novo = Math.max(app.versao, ...(d ? d.versoes : [0])) + 1;
+  const velho = await caches.open(`app:${id}:v${app.versao}`), nova = await caches.open(`app:${id}:v${novo}`);
+  for (const req of await velho.keys()) await nova.put(req, await velho.match(req));
+  await caches.delete(`app:${id}:v${app.versao}`);
+  app.versao = novo; await Apps.guardarMeta(app);
+  await A.gravar('fila', 'programa:' + id, { tipo: 'programa', id, versao: novo, em: Date.now() });
+  return novo;
+}
 // Formato antigo no Drive (pasta "programa") → versoes/v<N>. Faz-se uma vez por app.
 let aArrumar = false;
 async function arrumarApps() {
@@ -1036,6 +1161,9 @@ async function menuApp(app) {
   const ld = $('#m-drive');
   ld.hidden = !app.drive?.pasta;
   if (app.drive?.pasta) ld.href = Drive.ligacaoPasta(app.drive.pasta);
+  const noDrive = E.loja.find(x => x.id === app.id);
+  $('#m-versoes').hidden = !noDrive;
+  $('#m-versoes').textContent = noDrive ? `Versão ativa neste aparelho (${app.versao} de ${noDrive.versoes.length})…` : 'Versão ativa neste aparelho…';
   $('#m-acoes').hidden = false; $('#m-editar-form').hidden = true;
   $('#dlg-app').showModal();
 }
@@ -1067,6 +1195,83 @@ $('#m-enviar').onclick = async () => {
   $('#dlg-app').close();
   registar('info', `"${app.nome}" voltou à fila para o Drive.`);
   await atualizarApps(); processarFila();
+};
+$('#m-versoes').onclick = () => {
+  const app = appMenu, x = E.loja.find(y => y.id === app.id);
+  if (!x) return;
+  $('#dlg-app').close();
+  $('#v-titulo').textContent = `Versões de “${app.nome}”`;
+  const ul = $('#v-lista'); ul.textContent = '';
+  for (const v of [...x.versoes].reverse()) {
+    const li = document.createElement('li');
+    const s = document.createElement('span');
+    s.innerHTML = `<b>Versão ${v}</b>${v === x.versao ? ' · a mais recente' : ''}${v === app.versao ? ' · <b>neste aparelho</b>' : ''}`;
+    li.appendChild(s);
+    if (v !== app.versao) {
+      const b = document.createElement('button'); b.className = 'btn pequeno'; b.type = 'button'; b.textContent = 'Usar esta';
+      b.onclick = () => { $('#dlg-versoes').close(); transferirDaDrive(x, v, app); };
+      li.appendChild(b);
+    }
+    ul.appendChild(li);
+  }
+  $('#dlg-versoes').showModal();
+};
+// Eliminar de vez: no Drive (lixo, 30 dias) e neste aparelho. Pede o nome da app e a palavra-passe de eliminação.
+let elTentativas = 0, elEsperaAte = 0, elCriar = false;
+$('#m-eliminar').onclick = async () => {
+  const app = appMenu;
+  $('#dlg-app').close();
+  if (aplicarBloqueioVersao()) return;
+  if (!E.online || !Drive.temToken()) { aviso('Para eliminar no Drive é preciso internet e ligar ao Drive.', { erro: true, acao: { texto: 'Ligar', fn: () => ligarGoogle() } }); return; }
+  let cod;
+  try { cod = await Loja.codigoEliminacao(await garantirRaiz()); } catch (e) { tratarErroDrive(e); return; }
+  elCriar = !cod;
+  $('#el-titulo').textContent = `Eliminar “${app.nome}” de vez`;
+  $('#el-texto').innerHTML = '<p><b>Isto apaga a app de todos os aparelhos.</b> O programa, todas as versões e todos os dados (registos e PDFs) vão para o lixo do Google Drive.</p><p>Podes recuperá-los no Drive durante 30 dias; depois desaparecem para sempre. Os outros aparelhos perguntam se a apagam quando sincronizarem.</p>';
+  $('#el-nome').value = ''; $('#el-p').value = ''; $('#el-p1').value = ''; $('#el-p2').value = ''; $('#erro-eliminar').textContent = '';
+  $('#el-rot-nome').textContent = `Escreve o nome da app para confirmar: ${app.nome}`;
+  $('#el-criar').hidden = !elCriar; $('#el-entrar').hidden = elCriar;
+  $('#dlg-eliminar').dataset.app = app.id;
+  $('#dlg-eliminar').showModal(); $('#el-nome').focus();
+};
+$('#el-cancelar').onclick = () => $('#dlg-eliminar').close();
+$('#form-eliminar').onsubmit = async ev => {
+  ev.preventDefault();
+  const app = E.apps.find(a => a.id === $('#dlg-eliminar').dataset.app);
+  const erro = t => { $('#erro-eliminar').textContent = t; };
+  if (!app) return $('#dlg-eliminar').close();
+  if ($('#el-nome').value.trim() !== app.nome) return erro('O nome não é igual ao da app.');
+  if (Date.now() < elEsperaAte) return erro(`Demasiadas tentativas. Espera ${Math.ceil((elEsperaAte - Date.now()) / 1000)} s.`);
+  const raiz = await garantirRaiz();
+  $('#el-ok').disabled = true;
+  try {
+    if (elCriar) {
+      const p1 = $('#el-p1').value, p2 = $('#el-p2').value;
+      if (p1.length < 6) return erro('A palavra-passe de eliminação tem de ter pelo menos 6 caracteres.');
+      if (p1 !== p2) return erro('As duas não são iguais.');
+      erro('A guardar…');
+      await Loja.definirCodigoEliminacao(raiz, p1);
+      registar('info', 'Palavra-passe de eliminação criada (guardada no Drive só como "resumo").');
+    } else {
+      erro('A verificar…');
+      if (!(await Loja.verificarCodigoEliminacao(raiz, $('#el-p').value))) {
+        $('#el-p').value = '';
+        registar('aviso', `Palavra-passe de eliminação errada ("${app.nome}").`);
+        if (++elTentativas >= 3) { elTentativas = 0; elEsperaAte = Date.now() + 60000; return erro('Errada. Demasiadas tentativas: espera 1 minuto.'); }
+        return erro('Errada.');
+      }
+    }
+    erro('A eliminar…');
+    const noDrive = await Loja.eliminarDoDrive(raiz, app.id);
+    await apagarLocal(app, 'eliminada de vez');
+    E.loja = E.loja.filter(x => x.id !== app.id);
+    registar('aviso', `App "${app.nome}" eliminada de vez${noDrive ? ': a pasta foi para o lixo do Drive (30 dias)' : ''}.`);
+    historicoTransf({ dir: 'up', o: `${app.nome}: eliminada de vez (lixo do Drive)`, bytes: 0, ms: 0, ok: true });
+    $('#dlg-eliminar').close();
+    aviso(`“${app.nome}” eliminada. Está no lixo do Drive durante 30 dias.`, { registo: false });
+    await atualizarApps();
+  } catch (e) { erro('Não foi possível: ' + e.message); tratarErroDrive(e); }
+  finally { $('#el-ok').disabled = false; }
 };
 $('#m-apagar').onclick = async () => {
   $('#dlg-app').close();
@@ -1195,6 +1400,13 @@ $('#j-nome').oninput = () => { if (!J.icone) iconeEl({ id: Apps.slug($('#j-nome'
 $('#dlg-juntar').addEventListener('cancel', ev => { if (J?.aTrabalhar) ev.preventDefault(); });
 $('#btn-juntar-cancelar').onclick = () => { if (!J?.aTrabalhar) $('#dlg-juntar').close(); };
 
+// App nova neste aparelho: se for uma app que já está no Drive (juntada noutro aparelho), fica com o mesmo id
+// e passa a ser a versão seguinte à do Drive (nunca escreve por cima de uma versão que lá está)
+function novaOuDoDrive(nome) {
+  const d = !J.forcarNova && E.loja.find(x => (J.prep.portalApp && x.portalApp === J.prep.portalApp) || x.id === Apps.slug(nome));
+  if (d) return { id: d.id, nome: d.nome, descricao: d.descricao, icone: J.icone, versao: d.versao + 1, criadaEm: Date.now() };
+  return { id: Apps.idLivre(Apps.slug(nome), [...E.apps, ...E.loja]), nome, descricao: $('#j-desc').value.trim(), icone: J.icone, versao: 1, criadaEm: Date.now() };
+}
 $('#btn-juntar-ok').onclick = async () => {
   if (!J?.prep || J.aTrabalhar) return;
   const nome = J.app ? J.app.nome : $('#j-nome').value.trim();
@@ -1204,9 +1416,10 @@ $('#btn-juntar-ok').onclick = async () => {
   const prog = $('#juntar-prog'); prog.hidden = false;
   const barra = (txt, f) => { prog.querySelector('div').style.width = (f * 100).toFixed(1) + '%'; prog.querySelector('span').textContent = txt; };
   try {
+    if (E.online && Drive.temToken()) { try { E.loja = await Loja.listar(await garantirRaiz()); E.lojaEm = Date.now(); } catch (e) {} }
     const meta = J.app
-      ? { ...J.app, versao: (J.app.versao || 1) + 1 }
-      : { id: Apps.idLivre(Apps.slug(nome), E.apps), nome, descricao: $('#j-desc').value.trim(), icone: J.icone, versao: 1, criadaEm: Date.now() };
+      ? { ...J.app, versao: Math.max(J.app.versao || 1, E.loja.find(x => x.id === J.app.id)?.versao || 0) + 1, versaoFixada: undefined }
+      : novaOuDoDrive(nome);
     if (J.prep.portalApp) meta.portalApp = J.prep.portalApp;
     meta.versaoApp = J.prep.portalVersao || null;
     delete meta.naoEnviado;
@@ -1280,7 +1493,7 @@ async function desenharAparelho() {
   for (const app of E.apps) {
     const li = document.createElement('li');
     const d = td[app.id];
-    const s = document.createElement('span'); s.textContent = `${app.nome} — programa ${tam(app.tamanho)}` + (d ? ` · dados ${tam(d.bytes)} (${d.registos} registo${d.registos === 1 ? '' : 's'}, ${d.ficheiros} ficheiro${d.ficheiros === 1 ? '' : 's'})` : ' · sem dados');
+    const s = document.createElement('span'); s.textContent = `${app.nome} — programa ${tam(app.tamanho)}` + (d && (d.registos || d.ficheiros) ? ` · dados neste aparelho ${tam(d.bytes)} (${d.registos} registo${d.registos === 1 ? '' : 's'}, ${d.ficheiros} ficheiro${d.ficheiros === 1 ? '' : 's'})` : ' · sem dados guardados aqui') + (d?.soNoDrive ? ` · ${d.soNoDrive} ficheiro${d.soNoDrive === 1 ? '' : 's'} (${tam(d.bytesDrive)}) só no Drive` : '');
     const b = document.createElement('button'); b.className = 'btn pequeno texto perigo'; b.type = 'button'; b.textContent = 'Apagar';
     b.onclick = () => { fecharDefinicoes(); appMenu = app; $('#m-apagar').onclick(); };
     li.append(s, b); ul.appendChild(li);
@@ -1599,7 +1812,8 @@ async function atualizarUltimasGuias(guiasId) {
       const g = f.name.match(RE_GUIA);
       if (!g) continue;
       const n = +g[1], v = +g[3], b = melhores.get(n);
-      if (!b || v > b.v) melhores.set(n, { f, v });
+      // a mesma versão em duas pastas (ex.: o mesmo guia com o nome corrigido): fica a juntada mais recentemente
+      if (!b || v > b.v || (v === b.v && (f.createdTime || '') > (b.f.createdTime || ''))) melhores.set(n, { f, v });
     }
   }
   await varrer(guiasId, 0);
@@ -1667,7 +1881,7 @@ $('#docs-pasta').onclick = async () => {
 
 // Arquivo automático: cada versão nova do Portal guarda uma cópia de si própria na Documentação
 const FICHEIROS_PORTAL = ['index.html', '404.html', 'README.md', 'versao.json', 'sw.js', 'manifest.webmanifest', 'css/portal.css',
-  'js/main.js', 'js/armazem.js', 'js/cofre.js', 'js/drive.js', 'js/apps.js', 'js/dados.js', 'js/sinc.js', 'js/gavetabd.js', 'js/gaveta.js',
+  'js/main.js', 'js/armazem.js', 'js/cofre.js', 'js/drive.js', 'js/apps.js', 'js/dados.js', 'js/sinc.js', 'js/loja.js', 'js/gavetabd.js', 'js/gaveta.js',
   'vendor/jszip.min.js', 'icons/favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
 let aArquivar = false;
 async function arquivarVersao() {

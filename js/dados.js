@@ -2,7 +2,7 @@
 // No Drive:  Portal/apps/<id>/dados/registos/<coleção>/<id>.json   e   Portal/apps/<id>/dados/ficheiros/<nome> (<id>).<ext>
 import * as Drive from './drive.js';
 
-export const V = '1.8';
+export const V = '1.9';
 const BD = () => self.GavetaBD;
 const PARALELO = 4;
 
@@ -25,7 +25,8 @@ export async function tamanhoPorApp() {
   const r = {};
   const de = app => r[app] || (r[app] = { registos: 0, ficheiros: 0, bytes: 0 });
   for (const x of docs) if (!x.apagado) { de(x.app).registos++; de(x.app).bytes += JSON.stringify(x.dados).length; }
-  for (const x of fich) if (!x.apagado) { de(x.app).ficheiros++; de(x.app).bytes += x.tamanho || 0; }
+  // só conta o que está mesmo guardado neste aparelho; o que está só no Drive conta à parte
+  for (const x of fich) if (!x.apagado) { if (x.blob) { de(x.app).ficheiros++; de(x.app).bytes += x.tamanho || 0; } else { de(x.app).soNoDrive = (de(x.app).soNoDrive || 0) + 1; de(x.app).bytesDrive = (de(x.app).bytesDrive || 0) + (x.tamanho || 0); } }
   return r;
 }
 
